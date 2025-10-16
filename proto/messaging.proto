@@ -1,0 +1,24 @@
+syntax = "proto3";
+package sm.v1;
+option go_package = "github.com/example/secure-messenger/server/internal/gen/sm/v1";
+import "common.proto";
+
+
+service Messaging {
+// Отправка зашифрованного конверта (E2E шифрование — на клиенте)
+rpc Send(EncryptedEnvelope) returns (SendResponse);
+// Долгополлинговая/стриминговая доставка
+rpc Pull(PullRequest) returns (stream EncryptedEnvelope);
+}
+
+
+message EncryptedEnvelope {
+EnvelopeMeta meta = 1;
+bytes ciphertext = 2; // AEAD, например XChaCha20-Poly1305/GOST-алгоритм
+}
+
+
+message SendResponse { string server_msg_id = 1; }
+
+
+message PullRequest { string since_server_msg_id = 1;

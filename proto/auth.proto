@@ -1,0 +1,18 @@
+syntax = "proto3";
+package sm.v1;
+option go_package = "github.com/example/secure-messenger/server/internal/gen/sm/v1";
+import "common.proto";
+
+
+service Auth {
+// mTLS обязательный. Эндпоинт выдает короткоживущий токен (опционально),
+// и отдает профиль пользователя.
+rpc WhoAmI(Empty) returns (WhoAmIResponse);
+}
+
+
+message WhoAmIResponse {
+string user_id = 1;
+string display_name = 2;
+repeated string roles = 3; // admin/operator/user
+}

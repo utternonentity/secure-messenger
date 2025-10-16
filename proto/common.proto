@@ -1,0 +1,28 @@
+syntax = "proto3";
+package sm.v1;
+option go_package = "github.com/example/secure-messenger/server/internal/gen/sm/v1";
+
+
+message Empty {}
+
+
+message UserId { string id = 1; }
+message DeviceId { string id = 1; }
+
+
+message Timestamp { int64 unix_sec = 1; }
+
+
+message SignedIdentity {
+string user_id = 1;
+string device_id = 2;
+bytes cert_der = 3; // DER-кодированный сертификат устройства
+}
+
+
+message EnvelopeMeta {
+string conversation_id = 1;
+string sender_user_id = 2;
+string sender_device_id = 3;
+int64 sent_unix_sec = 4;
+}
