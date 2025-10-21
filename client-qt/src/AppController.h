@@ -3,9 +3,9 @@
 
 
 class AppController : public QObject {
-Q_OBJECT
+    Q_OBJECT
 public:
-explicit AppController(QObject* parent=nullptr);
+    explicit AppController(QObject* parent=nullptr);
 
 
 Q_INVOKABLE void send(const QString& text);

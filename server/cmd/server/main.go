@@ -3,7 +3,6 @@ package main
 
 import (
 "context"
-"crypto/tls"
 "log"
 "net"
 
@@ -12,11 +11,11 @@ import (
 "google.golang.org/grpc/credentials"
 
 
-smv1 "github.com/example/secure-messenger/server/internal/gen/sm/v1"
-"github.com/example/secure-messenger/server/internal/auth"
-"github.com/example/secure-messenger/server/internal/directory"
-"github.com/example/secure-messenger/server/internal/messaging"
-"github.com/example/secure-messenger/server/internal/mtls"
+smv1 "github.com/utternonentity/secure-messenger/server/internal/gen/sm/v1"
+"github.com/utternonentity/secure-messenger/server/internal/auth"
+"github.com/utternonentity/secure-messenger/server/internal/directory"
+"github.com/utternonentity/secure-messenger/server/internal/messaging"
+"github.com/utternonentity/secure-messenger/server/internal/mtls"
 )
 
 

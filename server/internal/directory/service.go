@@ -3,7 +3,7 @@ package directory
 
 import (
 "context"
-smv1 "github.com/example/secure-messenger/server/internal/gen/sm/v1"
+smv1 "github.com/utternonentity/secure-messenger/server/internal/gen/sm/v1"
 )
 
 
