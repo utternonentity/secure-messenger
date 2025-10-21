@@ -1,0 +1,35 @@
+# CMake
+/build/
+/CMakeFiles/
+/CMakeCache.txt
+/cmake-build-*/
+**/.cmake/
+**/CMakeFiles/
+**/CMakeCache.txt
+
+# VS Code
+.vscode/
+
+# Qt/CLion/IDE
+*.user
+.idea/
+
+# Компилятор/линковка
+*.o
+*.obj
+*.a
+*.lib
+*.dll
+*.so
+*.dylib
+*.exe
+*.out
+*.log
+
+# Go (server)
+server/bin/
+coverage.out
+
+# Misc
+*.cache
+*.pdb
