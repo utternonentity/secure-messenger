@@ -120,6 +120,7 @@ func (x *SendResponse) GetServerMsgId() string {
 type PullRequest struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	SinceServerMsgId string                 `protobuf:"bytes,1,opt,name=since_server_msg_id,json=sinceServerMsgId,proto3" json:"since_server_msg_id,omitempty"`
+	ConversationIds  []string               `protobuf:"bytes,2,rep,name=conversation_ids,json=conversationIds,proto3" json:"conversation_ids,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -161,6 +162,13 @@ func (x *PullRequest) GetSinceServerMsgId() string {
 	return ""
 }
 
+func (x *PullRequest) GetConversationIds() []string {
+	if x != nil {
+		return x.ConversationIds
+	}
+	return nil
+}
+
 var File_messaging_proto protoreflect.FileDescriptor
 
 const file_messaging_proto_rawDesc = "" +
@@ -172,9 +180,10 @@ const file_messaging_proto_rawDesc = "" +
 	"ciphertext\x18\x02 \x01(\fR\n" +
 	"ciphertext\"2\n" +
 	"\fSendResponse\x12\"\n" +
-	"\rserver_msg_id\x18\x01 \x01(\tR\vserverMsgId\"<\n" +
+	"\rserver_msg_id\x18\x01 \x01(\tR\vserverMsgId\"g\n" +
 	"\vPullRequest\x12-\n" +
-	"\x13since_server_msg_id\x18\x01 \x01(\tR\x10sinceServerMsgId2z\n" +
+	"\x13since_server_msg_id\x18\x01 \x01(\tR\x10sinceServerMsgId\x12)\n" +
+	"\x10conversation_ids\x18\x02 \x03(\tR\x0fconversationIds2z\n" +
 	"\tMessaging\x125\n" +
 	"\x04Send\x12\x18.sm.v1.EncryptedEnvelope\x1a\x13.sm.v1.SendResponse\x126\n" +
 	"\x04Pull\x12\x12.sm.v1.PullRequest\x1a\x18.sm.v1.EncryptedEnvelope0\x01BKZIgithub.com/utternonentity/secure-messenger/server/internal/gen/sm/v1;smv1b\x06proto3"

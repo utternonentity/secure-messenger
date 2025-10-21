@@ -15,21 +15,18 @@ import (
 	smv1 "github.com/utternonentity/secure-messenger/server/internal/gen/sm/v1"
 )
 
-// StoredEnvelope represents a persisted envelope along with its monotonic server identifier.
+// StoredEnvelope represents a persisted envelope along with its monotonic identifier.
 type StoredEnvelope struct {
 	ID       int64
 	Envelope *smv1.EncryptedEnvelope
 }
 
-// envelopeRepository defines the behaviour required by the messaging service to persist envelopes.
 type envelopeRepository interface {
 	Save(ctx context.Context, env *smv1.EncryptedEnvelope) (int64, error)
 	ForEachSince(ctx context.Context, afterID int64, fn func(StoredEnvelope) error) error
 }
 
-const (
-	recordHeaderSize = 12 // 8 bytes for the identifier, 4 bytes for the payload length.
-)
+const recordHeaderSize = 12 // 8 bytes id, 4 bytes payload length.
 
 type fileStore struct {
 	mu      sync.RWMutex
@@ -43,12 +40,11 @@ type fileRecord struct {
 	payload []byte
 }
 
-// NewFileStore initialises a persistent store backed by an append-only file. The file is created if absent.
-func NewFileStore(path string) (*fileStore, error) {
+// NewStore creates a persistent store backed by an append-only file.
+func NewStore(path string) (*fileStore, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, fmt.Errorf("store path must not be empty")
 	}
-
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("open store file: %w", err)
@@ -59,7 +55,6 @@ func NewFileStore(path string) (*fileStore, error) {
 		f.Close()
 		return nil, err
 	}
-
 	if _, err := f.Seek(0, io.SeekEnd); err != nil {
 		f.Close()
 		return nil, fmt.Errorf("seek end: %w", err)
@@ -77,7 +72,6 @@ func NewFileStore(path string) (*fileStore, error) {
 func (s *fileStore) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	if s.file == nil {
 		return nil
 	}
@@ -153,10 +147,8 @@ func loadRecords(f *os.File) ([]fileRecord, error) {
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return nil, fmt.Errorf("seek start: %w", err)
 	}
-
 	header := make([]byte, recordHeaderSize)
-	records := make([]fileRecord, 0)
-
+	var records []fileRecord
 	for {
 		if _, err := io.ReadFull(f, header); err != nil {
 			if errors.Is(err, io.EOF) {
@@ -167,7 +159,6 @@ func loadRecords(f *os.File) ([]fileRecord, error) {
 			}
 			return nil, fmt.Errorf("read record header: %w", err)
 		}
-
 		length := binary.LittleEndian.Uint32(header[8:])
 		payload := make([]byte, length)
 		if _, err := io.ReadFull(f, payload); err != nil {
@@ -176,11 +167,9 @@ func loadRecords(f *os.File) ([]fileRecord, error) {
 			}
 			return nil, fmt.Errorf("read record payload: %w", err)
 		}
-
 		id := int64(binary.LittleEndian.Uint64(header[:8]))
 		records = append(records, fileRecord{id: id, payload: payload})
 	}
-
 	return records, nil
 }
 

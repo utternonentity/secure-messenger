@@ -8,6 +8,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -21,7 +22,7 @@ func TestLoadServerTLSConfigSuccess(t *testing.T) {
 	keyFile := writeTempFile(t, dir, "server-key-*.pem", keyPEM)
 	caFile := writeTempFile(t, dir, "ca-cert-*.pem", caPEM)
 
-	cfg, err := LoadServerTLSConfig(certFile, keyFile, caFile)
+	cfg, err := LoadServerTLSConfig(certFile, keyFile, caFile, nil)
 	if err != nil {
 		t.Fatalf("LoadServerTLSConfig returned error: %v", err)
 	}
@@ -45,7 +46,7 @@ func TestLoadServerTLSConfigMissingKeyPair(t *testing.T) {
 	dir := t.TempDir()
 	caFile := writeTempFile(t, dir, "ca-cert-*.pem", caPEM)
 
-	_, err := LoadServerTLSConfig(filepath.Join(dir, "missing-cert.pem"), filepath.Join(dir, "missing-key.pem"), caFile)
+	_, err := LoadServerTLSConfig(filepath.Join(dir, "missing-cert.pem"), filepath.Join(dir, "missing-key.pem"), caFile, nil)
 	if err == nil {
 		t.Fatal("expected error when certificate or key file is missing")
 	}
@@ -58,10 +59,71 @@ func TestLoadServerTLSConfigInvalidClientCA(t *testing.T) {
 	keyFile := writeTempFile(t, dir, "server-key-*.pem", keyPEM)
 	caFile := writeTempFile(t, dir, "ca-cert-*.pem", []byte("not a valid certificate"))
 
-	_, err := LoadServerTLSConfig(certFile, keyFile, caFile)
+	_, err := LoadServerTLSConfig(certFile, keyFile, caFile, nil)
 	if err == nil {
 		t.Fatal("expected error when client CA file does not contain valid certificates")
 	}
+}
+
+func TestVerifyPeerCertificateChecksSAN(t *testing.T) {
+	certPEM, keyPEM, caPEM := generateServerAndCA(t)
+	dir := t.TempDir()
+	certFile := writeTempFile(t, dir, "server-cert-*.pem", certPEM)
+	keyFile := writeTempFile(t, dir, "server-key-*.pem", keyPEM)
+	caFile := writeTempFile(t, dir, "ca-cert-*.pem", caPEM)
+
+	cfg, err := LoadServerTLSConfig(certFile, keyFile, caFile, nil)
+	if err != nil {
+		t.Fatalf("LoadServerTLSConfig: %v", err)
+	}
+
+	clientCert := createClientCert(t, "client", nil)
+	if err := cfg.VerifyPeerCertificate([][]byte{clientCert.Raw}, nil); err == nil {
+		t.Fatal("expected SAN validation error")
+	}
+
+	validCert := createClientCert(t, "client", []*url.URL{mustParseURL(t, "sm://user/user123"), mustParseURL(t, "sm://device/device1")})
+	if err := cfg.VerifyPeerCertificate([][]byte{validCert.Raw}, nil); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+}
+
+func createClientCert(t *testing.T, cn string, uris []*url.URL) *x509.Certificate {
+	t.Helper()
+
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+
+	tmpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(time.Now().UnixNano()),
+		Subject:               pkix.Name{CommonName: cn},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		URIs:                  uris,
+		BasicConstraintsValid: true,
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &priv.PublicKey, priv)
+	if err != nil {
+		t.Fatalf("create certificate: %v", err)
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatalf("parse certificate: %v", err)
+	}
+	return cert
+}
+
+func mustParseURL(t *testing.T, raw string) *url.URL {
+	t.Helper()
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("parse url %s: %v", raw, err)
+	}
+	return u
 }
 
 func generateServerAndCA(t *testing.T) (certPEM, keyPEM, caCertPEM []byte) {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/x509"
 	"flag"
 	"log"
 	"net"
@@ -11,6 +12,7 @@ import (
 	"github.com/utternonentity/secure-messenger/server/internal/auth"
 	"github.com/utternonentity/secure-messenger/server/internal/directory"
 	smv1 "github.com/utternonentity/secure-messenger/server/internal/gen/sm/v1"
+	"github.com/utternonentity/secure-messenger/server/internal/identity"
 	"github.com/utternonentity/secure-messenger/server/internal/messaging"
 	"github.com/utternonentity/secure-messenger/server/internal/mtls"
 )
@@ -21,10 +23,24 @@ func main() {
 	clientCAPath := flag.String("client-ca", "/etc/sm/certs/client_ca.pem", "Path to the client CA bundle")
 	listenAddr := flag.String("listen", ":8443", "Address the server should listen on")
 	storePath := flag.String("store", "sm_messages.db", "Path to the message store file")
+	identityPath := flag.String("identity-store", "sm_identity.db", "Path to the identity store file")
 	flag.Parse()
 
+	identityManager, err := identity.NewManager(*identityPath)
+	if err != nil {
+		log.Fatalf("init identity store: %v", err)
+	}
+	defer func() {
+		if err := identityManager.Close(); err != nil {
+			log.Printf("close identity store: %v", err)
+		}
+	}()
+
 	// Загрузка mTLS (сертификат сервера + доверенные CA для клиентов)
-	cfg, err := mtls.LoadServerTLSConfig(*certPath, *keyPath, *clientCAPath)
+	cfg, err := mtls.LoadServerTLSConfig(*certPath, *keyPath, *clientCAPath, func(cert *x509.Certificate) error {
+		_, err := identityManager.ValidateCertificate(cert)
+		return err
+	})
 	if err != nil {
 		log.Fatalf("TLS load: %v", err)
 	}
@@ -36,7 +52,7 @@ func main() {
 
 	srv := grpc.NewServer(grpc.Creds(credentials.NewTLS(cfg)))
 
-	msgStore, err := messaging.NewFileStore(*storePath)
+	msgStore, err := messaging.NewStore(*storePath)
 	if err != nil {
 		log.Fatalf("init message store: %v", err)
 	}
@@ -51,8 +67,17 @@ func main() {
 		log.Fatalf("init messaging service: %v", err)
 	}
 
-	smv1.RegisterAuthServer(srv, auth.NewService())
-	smv1.RegisterDirectoryServer(srv, directory.NewService())
+	authService, err := auth.NewService(identityManager)
+	if err != nil {
+		log.Fatalf("init auth service: %v", err)
+	}
+	directoryService, err := directory.NewService(identityManager)
+	if err != nil {
+		log.Fatalf("init directory service: %v", err)
+	}
+
+	smv1.RegisterAuthServer(srv, authService)
+	smv1.RegisterDirectoryServer(srv, directoryService)
 	smv1.RegisterMessagingServer(srv, messagingService)
 
 	log.Printf("secure-messenger server listening on %s", lis.Addr())

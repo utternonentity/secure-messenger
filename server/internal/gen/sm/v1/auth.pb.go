@@ -26,6 +26,8 @@ type WhoAmIResponse struct {
 	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	DisplayName   string                 `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
 	Roles         []string               `protobuf:"bytes,3,rep,name=roles,proto3" json:"roles,omitempty"` // admin/operator/user
+	DeviceId      string                 `protobuf:"bytes,4,opt,name=device_id,json=deviceId,proto3" json:"device_id,omitempty"`
+	DeviceCertDer []byte                 `protobuf:"bytes,5,opt,name=device_cert_der,json=deviceCertDer,proto3" json:"device_cert_der,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -81,16 +83,32 @@ func (x *WhoAmIResponse) GetRoles() []string {
 	return nil
 }
 
+func (x *WhoAmIResponse) GetDeviceId() string {
+	if x != nil {
+		return x.DeviceId
+	}
+	return ""
+}
+
+func (x *WhoAmIResponse) GetDeviceCertDer() []byte {
+	if x != nil {
+		return x.DeviceCertDer
+	}
+	return nil
+}
+
 var File_auth_proto protoreflect.FileDescriptor
 
 const file_auth_proto_rawDesc = "" +
 	"\n" +
 	"\n" +
-	"auth.proto\x12\x05sm.v1\x1a\fcommon.proto\"b\n" +
+	"auth.proto\x12\x05sm.v1\x1a\fcommon.proto\"\xa7\x01\n" +
 	"\x0eWhoAmIResponse\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12\x14\n" +
-	"\x05roles\x18\x03 \x03(\tR\x05roles25\n" +
+	"\x05roles\x18\x03 \x03(\tR\x05roles\x12\x1b\n" +
+	"\tdevice_id\x18\x04 \x01(\tR\bdeviceId\x12&\n" +
+	"\x0fdevice_cert_der\x18\x05 \x01(\fR\rdeviceCertDer25\n" +
 	"\x04Auth\x12-\n" +
 	"\x06WhoAmI\x12\f.sm.v1.Empty\x1a\x15.sm.v1.WhoAmIResponseBKZIgithub.com/utternonentity/secure-messenger/server/internal/gen/sm/v1;smv1b\x06proto3"
 

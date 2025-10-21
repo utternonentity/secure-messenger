@@ -19,8 +19,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Directory_ListUsers_FullMethodName = "/sm.v1.Directory/ListUsers"
-	Directory_GetUser_FullMethodName   = "/sm.v1.Directory/GetUser"
+	Directory_ListUsers_FullMethodName    = "/sm.v1.Directory/ListUsers"
+	Directory_GetUser_FullMethodName      = "/sm.v1.Directory/GetUser"
+	Directory_RotateDevice_FullMethodName = "/sm.v1.Directory/RotateDevice"
+	Directory_RevokeDevice_FullMethodName = "/sm.v1.Directory/RevokeDevice"
 )
 
 // DirectoryClient is the client API for Directory service.
@@ -29,6 +31,8 @@ const (
 type DirectoryClient interface {
 	ListUsers(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ListUsersResponse, error)
 	GetUser(ctx context.Context, in *UserId, opts ...grpc.CallOption) (*UserProfile, error)
+	RotateDevice(ctx context.Context, in *RotateDeviceRequest, opts ...grpc.CallOption) (*Device, error)
+	RevokeDevice(ctx context.Context, in *RevokeDeviceRequest, opts ...grpc.CallOption) (*Device, error)
 }
 
 type directoryClient struct {
@@ -59,12 +63,34 @@ func (c *directoryClient) GetUser(ctx context.Context, in *UserId, opts ...grpc.
 	return out, nil
 }
 
+func (c *directoryClient) RotateDevice(ctx context.Context, in *RotateDeviceRequest, opts ...grpc.CallOption) (*Device, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Device)
+	err := c.cc.Invoke(ctx, Directory_RotateDevice_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *directoryClient) RevokeDevice(ctx context.Context, in *RevokeDeviceRequest, opts ...grpc.CallOption) (*Device, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Device)
+	err := c.cc.Invoke(ctx, Directory_RevokeDevice_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DirectoryServer is the server API for Directory service.
 // All implementations must embed UnimplementedDirectoryServer
 // for forward compatibility.
 type DirectoryServer interface {
 	ListUsers(context.Context, *Empty) (*ListUsersResponse, error)
 	GetUser(context.Context, *UserId) (*UserProfile, error)
+	RotateDevice(context.Context, *RotateDeviceRequest) (*Device, error)
+	RevokeDevice(context.Context, *RevokeDeviceRequest) (*Device, error)
 	mustEmbedUnimplementedDirectoryServer()
 }
 
@@ -80,6 +106,12 @@ func (UnimplementedDirectoryServer) ListUsers(context.Context, *Empty) (*ListUse
 }
 func (UnimplementedDirectoryServer) GetUser(context.Context, *UserId) (*UserProfile, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetUser not implemented")
+}
+func (UnimplementedDirectoryServer) RotateDevice(context.Context, *RotateDeviceRequest) (*Device, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RotateDevice not implemented")
+}
+func (UnimplementedDirectoryServer) RevokeDevice(context.Context, *RevokeDeviceRequest) (*Device, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RevokeDevice not implemented")
 }
 func (UnimplementedDirectoryServer) mustEmbedUnimplementedDirectoryServer() {}
 func (UnimplementedDirectoryServer) testEmbeddedByValue()                   {}
@@ -138,6 +170,42 @@ func _Directory_GetUser_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Directory_RotateDevice_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RotateDeviceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DirectoryServer).RotateDevice(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Directory_RotateDevice_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DirectoryServer).RotateDevice(ctx, req.(*RotateDeviceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Directory_RevokeDevice_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevokeDeviceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DirectoryServer).RevokeDevice(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Directory_RevokeDevice_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DirectoryServer).RevokeDevice(ctx, req.(*RevokeDeviceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Directory_ServiceDesc is the grpc.ServiceDesc for Directory service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -152,6 +220,14 @@ var Directory_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetUser",
 			Handler:    _Directory_GetUser_Handler,
+		},
+		{
+			MethodName: "RotateDevice",
+			Handler:    _Directory_RotateDevice_Handler,
+		},
+		{
+			MethodName: "RevokeDevice",
+			Handler:    _Directory_RevokeDevice_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

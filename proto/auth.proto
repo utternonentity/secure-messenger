@@ -12,7 +12,9 @@ rpc WhoAmI(Empty) returns (WhoAmIResponse);
 
 
 message WhoAmIResponse {
-string user_id = 1;
-string display_name = 2;
-repeated string roles = 3; // admin/operator/user
+  string user_id = 1;
+  string display_name = 2;
+  repeated string roles = 3; // admin/operator/user
+  string device_id = 4;
+  bytes device_cert_der = 5;
 }

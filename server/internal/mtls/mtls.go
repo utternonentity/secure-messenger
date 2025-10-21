@@ -5,9 +5,13 @@ import (
 	"crypto/x509"
 	"fmt"
 	"os"
+	"strings"
 )
 
-func LoadServerTLSConfig(certFile, keyFile, clientCAFile string) (*tls.Config, error) {
+// ClientValidator is invoked for each authenticated client certificate.
+type ClientValidator func(*x509.Certificate) error
+
+func LoadServerTLSConfig(certFile, keyFile, clientCAFile string, validator ClientValidator) (*tls.Config, error) {
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
 		return nil, err
@@ -20,10 +24,46 @@ func LoadServerTLSConfig(certFile, keyFile, clientCAFile string) (*tls.Config, e
 	if ok := clientCAPool.AppendCertsFromPEM(caBytes); !ok {
 		return nil, fmt.Errorf("failed to append client CA certs from %s", clientCAFile)
 	}
-	return &tls.Config{
+	cfg := &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		ClientCAs:    clientCAPool,
 		ClientAuth:   tls.RequireAndVerifyClientCert,
 		MinVersion:   tls.VersionTLS13,
-	}, nil
+	}
+
+	cfg.VerifyPeerCertificate = func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+		if len(rawCerts) == 0 {
+			return fmt.Errorf("no client certificate provided")
+		}
+		clientCert, err := x509.ParseCertificate(rawCerts[0])
+		if err != nil {
+			return fmt.Errorf("parse client certificate: %w", err)
+		}
+		if strings.TrimSpace(clientCert.Subject.CommonName) == "" {
+			return fmt.Errorf("client certificate missing CommonName")
+		}
+		var hasUser, hasDevice bool
+		for _, uri := range clientCert.URIs {
+			if uri == nil || !strings.EqualFold(uri.Scheme, "sm") {
+				continue
+			}
+			switch strings.ToLower(uri.Host) {
+			case "user":
+				hasUser = true
+			case "device":
+				hasDevice = true
+			}
+		}
+		if !hasUser || !hasDevice {
+			return fmt.Errorf("client certificate missing sm://user and sm://device SAN entries")
+		}
+		if validator != nil {
+			if err := validator(clientCert); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	return cfg, nil
 }

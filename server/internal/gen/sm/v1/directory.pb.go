@@ -85,6 +85,7 @@ type Device struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	DeviceId      string                 `protobuf:"bytes,1,opt,name=device_id,json=deviceId,proto3" json:"device_id,omitempty"`
 	DeviceCertDer []byte                 `protobuf:"bytes,2,opt,name=device_cert_der,json=deviceCertDer,proto3" json:"device_cert_der,omitempty"`
+	Revoked       bool                   `protobuf:"varint,3,opt,name=revoked,proto3" json:"revoked,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -133,6 +134,125 @@ func (x *Device) GetDeviceCertDer() []byte {
 	return nil
 }
 
+func (x *Device) GetRevoked() bool {
+	if x != nil {
+		return x.Revoked
+	}
+	return false
+}
+
+type RotateDeviceRequest struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	UserId           string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	DeviceId         string                 `protobuf:"bytes,2,opt,name=device_id,json=deviceId,proto3" json:"device_id,omitempty"`
+	NewDeviceCertDer []byte                 `protobuf:"bytes,3,opt,name=new_device_cert_der,json=newDeviceCertDer,proto3" json:"new_device_cert_der,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *RotateDeviceRequest) Reset() {
+	*x = RotateDeviceRequest{}
+	mi := &file_directory_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RotateDeviceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RotateDeviceRequest) ProtoMessage() {}
+
+func (x *RotateDeviceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_directory_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RotateDeviceRequest.ProtoReflect.Descriptor instead.
+func (*RotateDeviceRequest) Descriptor() ([]byte, []int) {
+	return file_directory_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *RotateDeviceRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *RotateDeviceRequest) GetDeviceId() string {
+	if x != nil {
+		return x.DeviceId
+	}
+	return ""
+}
+
+func (x *RotateDeviceRequest) GetNewDeviceCertDer() []byte {
+	if x != nil {
+		return x.NewDeviceCertDer
+	}
+	return nil
+}
+
+type RevokeDeviceRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	DeviceId      string                 `protobuf:"bytes,2,opt,name=device_id,json=deviceId,proto3" json:"device_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeDeviceRequest) Reset() {
+	*x = RevokeDeviceRequest{}
+	mi := &file_directory_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeDeviceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeDeviceRequest) ProtoMessage() {}
+
+func (x *RevokeDeviceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_directory_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeDeviceRequest.ProtoReflect.Descriptor instead.
+func (*RevokeDeviceRequest) Descriptor() ([]byte, []int) {
+	return file_directory_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *RevokeDeviceRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *RevokeDeviceRequest) GetDeviceId() string {
+	if x != nil {
+		return x.DeviceId
+	}
+	return ""
+}
+
 type ListUsersResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Users         []*UserProfile         `protobuf:"bytes,1,rep,name=users,proto3" json:"users,omitempty"`
@@ -142,7 +262,7 @@ type ListUsersResponse struct {
 
 func (x *ListUsersResponse) Reset() {
 	*x = ListUsersResponse{}
-	mi := &file_directory_proto_msgTypes[2]
+	mi := &file_directory_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -154,7 +274,7 @@ func (x *ListUsersResponse) String() string {
 func (*ListUsersResponse) ProtoMessage() {}
 
 func (x *ListUsersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_directory_proto_msgTypes[2]
+	mi := &file_directory_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -167,7 +287,7 @@ func (x *ListUsersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUsersResponse.ProtoReflect.Descriptor instead.
 func (*ListUsersResponse) Descriptor() ([]byte, []int) {
-	return file_directory_proto_rawDescGZIP(), []int{2}
+	return file_directory_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ListUsersResponse) GetUsers() []*UserProfile {
@@ -185,15 +305,25 @@ const file_directory_proto_rawDesc = "" +
 	"\vUserProfile\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12'\n" +
-	"\adevices\x18\x03 \x03(\v2\r.sm.v1.DeviceR\adevices\"M\n" +
+	"\adevices\x18\x03 \x03(\v2\r.sm.v1.DeviceR\adevices\"g\n" +
 	"\x06Device\x12\x1b\n" +
 	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12&\n" +
-	"\x0fdevice_cert_der\x18\x02 \x01(\fR\rdeviceCertDer\"=\n" +
+	"\x0fdevice_cert_der\x18\x02 \x01(\fR\rdeviceCertDer\x12\x18\n" +
+	"\arevoked\x18\x03 \x01(\bR\arevoked\"z\n" +
+	"\x13RotateDeviceRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1b\n" +
+	"\tdevice_id\x18\x02 \x01(\tR\bdeviceId\x12-\n" +
+	"\x13new_device_cert_der\x18\x03 \x01(\fR\x10newDeviceCertDer\"K\n" +
+	"\x13RevokeDeviceRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1b\n" +
+	"\tdevice_id\x18\x02 \x01(\tR\bdeviceId\"=\n" +
 	"\x11ListUsersResponse\x12(\n" +
-	"\x05users\x18\x01 \x03(\v2\x12.sm.v1.UserProfileR\x05users2n\n" +
+	"\x05users\x18\x01 \x03(\v2\x12.sm.v1.UserProfileR\x05users2\xe4\x01\n" +
 	"\tDirectory\x123\n" +
 	"\tListUsers\x12\f.sm.v1.Empty\x1a\x18.sm.v1.ListUsersResponse\x12,\n" +
-	"\aGetUser\x12\r.sm.v1.UserId\x1a\x12.sm.v1.UserProfileBKZIgithub.com/utternonentity/secure-messenger/server/internal/gen/sm/v1;smv1b\x06proto3"
+	"\aGetUser\x12\r.sm.v1.UserId\x1a\x12.sm.v1.UserProfile\x129\n" +
+	"\fRotateDevice\x12\x1a.sm.v1.RotateDeviceRequest\x1a\r.sm.v1.Device\x129\n" +
+	"\fRevokeDevice\x12\x1a.sm.v1.RevokeDeviceRequest\x1a\r.sm.v1.DeviceBKZIgithub.com/utternonentity/secure-messenger/server/internal/gen/sm/v1;smv1b\x06proto3"
 
 var (
 	file_directory_proto_rawDescOnce sync.Once
@@ -207,23 +337,29 @@ func file_directory_proto_rawDescGZIP() []byte {
 	return file_directory_proto_rawDescData
 }
 
-var file_directory_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_directory_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_directory_proto_goTypes = []any{
-	(*UserProfile)(nil),       // 0: sm.v1.UserProfile
-	(*Device)(nil),            // 1: sm.v1.Device
-	(*ListUsersResponse)(nil), // 2: sm.v1.ListUsersResponse
-	(*Empty)(nil),             // 3: sm.v1.Empty
-	(*UserId)(nil),            // 4: sm.v1.UserId
+	(*UserProfile)(nil),         // 0: sm.v1.UserProfile
+	(*Device)(nil),              // 1: sm.v1.Device
+	(*RotateDeviceRequest)(nil), // 2: sm.v1.RotateDeviceRequest
+	(*RevokeDeviceRequest)(nil), // 3: sm.v1.RevokeDeviceRequest
+	(*ListUsersResponse)(nil),   // 4: sm.v1.ListUsersResponse
+	(*Empty)(nil),               // 5: sm.v1.Empty
+	(*UserId)(nil),              // 6: sm.v1.UserId
 }
 var file_directory_proto_depIdxs = []int32{
 	1, // 0: sm.v1.UserProfile.devices:type_name -> sm.v1.Device
 	0, // 1: sm.v1.ListUsersResponse.users:type_name -> sm.v1.UserProfile
-	3, // 2: sm.v1.Directory.ListUsers:input_type -> sm.v1.Empty
-	4, // 3: sm.v1.Directory.GetUser:input_type -> sm.v1.UserId
-	2, // 4: sm.v1.Directory.ListUsers:output_type -> sm.v1.ListUsersResponse
-	0, // 5: sm.v1.Directory.GetUser:output_type -> sm.v1.UserProfile
-	4, // [4:6] is the sub-list for method output_type
-	2, // [2:4] is the sub-list for method input_type
+	5, // 2: sm.v1.Directory.ListUsers:input_type -> sm.v1.Empty
+	6, // 3: sm.v1.Directory.GetUser:input_type -> sm.v1.UserId
+	2, // 4: sm.v1.Directory.RotateDevice:input_type -> sm.v1.RotateDeviceRequest
+	3, // 5: sm.v1.Directory.RevokeDevice:input_type -> sm.v1.RevokeDeviceRequest
+	4, // 6: sm.v1.Directory.ListUsers:output_type -> sm.v1.ListUsersResponse
+	0, // 7: sm.v1.Directory.GetUser:output_type -> sm.v1.UserProfile
+	1, // 8: sm.v1.Directory.RotateDevice:output_type -> sm.v1.Device
+	1, // 9: sm.v1.Directory.RevokeDevice:output_type -> sm.v1.Device
+	6, // [6:10] is the sub-list for method output_type
+	2, // [2:6] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
 	2, // [2:2] is the sub-list for extension extendee
 	0, // [0:2] is the sub-list for field type_name
@@ -241,7 +377,7 @@ func file_directory_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_directory_proto_rawDesc), len(file_directory_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -5,8 +5,10 @@ import "common.proto";
 
 
 service Directory {
-rpc ListUsers(Empty) returns (ListUsersResponse);
-rpc GetUser(UserId) returns (UserProfile);
+  rpc ListUsers(Empty) returns (ListUsersResponse);
+  rpc GetUser(UserId) returns (UserProfile);
+  rpc RotateDevice(RotateDeviceRequest) returns (Device);
+  rpc RevokeDevice(RevokeDeviceRequest) returns (Device);
 }
 
 
@@ -18,8 +20,22 @@ repeated Device devices = 3;
 
 
 message Device {
-string device_id = 1;
-bytes device_cert_der = 2;
+  string device_id = 1;
+  bytes device_cert_der = 2;
+  bool revoked = 3;
+}
+
+
+message RotateDeviceRequest {
+  string user_id = 1;
+  string device_id = 2;
+  bytes new_device_cert_der = 3;
+}
+
+
+message RevokeDeviceRequest {
+  string user_id = 1;
+  string device_id = 2;
 }
 
 
