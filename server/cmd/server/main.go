@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"log"
 	"net"
@@ -21,6 +20,7 @@ func main() {
 	keyPath := flag.String("key", "/etc/sm/certs/server.key", "Path to the server TLS private key")
 	clientCAPath := flag.String("client-ca", "/etc/sm/certs/client_ca.pem", "Path to the client CA bundle")
 	listenAddr := flag.String("listen", ":8443", "Address the server should listen on")
+	storePath := flag.String("store", "sm_messages.db", "Path to the message store file")
 	flag.Parse()
 
 	// Загрузка mTLS (сертификат сервера + доверенные CA для клиентов)
@@ -35,11 +35,25 @@ func main() {
 	}
 
 	srv := grpc.NewServer(grpc.Creds(credentials.NewTLS(cfg)))
-	ctx := context.Background()
+
+	msgStore, err := messaging.NewFileStore(*storePath)
+	if err != nil {
+		log.Fatalf("init message store: %v", err)
+	}
+	defer func() {
+		if err := msgStore.Close(); err != nil {
+			log.Printf("close message store: %v", err)
+		}
+	}()
+
+	messagingService, err := messaging.NewService(msgStore)
+	if err != nil {
+		log.Fatalf("init messaging service: %v", err)
+	}
 
 	smv1.RegisterAuthServer(srv, auth.NewService())
 	smv1.RegisterDirectoryServer(srv, directory.NewService())
-	smv1.RegisterMessagingServer(srv, messaging.NewService(ctx))
+	smv1.RegisterMessagingServer(srv, messagingService)
 
 	log.Printf("secure-messenger server listening on %s", lis.Addr())
 	if err := srv.Serve(lis); err != nil {

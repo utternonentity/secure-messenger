@@ -29,6 +29,7 @@
 # Go (server)
 server/bin/
 coverage.out
+*.db
 
 # Misc
 *.cache
