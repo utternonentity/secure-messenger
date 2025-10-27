@@ -19,7 +19,7 @@ ApplicationWindow {
             Item { Layout.fillWidth: true }
             Button {
                 text: qsTr("Обновить пользователей")
-                onClicked: App.refreshUsers()
+                onClicked: if (App && App.refreshUsers) App.refreshUsers()
             }
         }
     }
@@ -42,30 +42,37 @@ ApplicationWindow {
                     Layout.fillWidth: true
 
                     Label {
-                        text: qsTr("Пользователь: %1 (%2)").arg(App.authInfo.displayName, App.authInfo.userId)
+                        text: qsTr("Пользователь: %1 (%2)")
+                              .arg(String(App ? App.authInfoDisplayName : ""))
+                              .arg(String(App ? App.authInfoUserId : ""))
                         font.pixelSize: 16
                     }
                     Label {
-                        text: qsTr("Роли: %1").arg(App.authInfo.roles.join(", "))
+                        text: qsTr("Роли: %1")
+                              .arg((App && App.roles) ? App.roles.join(", ") : "")
                         color: "#cccccc"
                     }
                     Label {
-                        text: qsTr("Активное устройство: %1").arg(App.authInfo.deviceId)
+                        text: qsTr("Активное устройство: %1")
+                              .arg(String(App && App.authInfoDeviceId ? App.authInfoDeviceId : ""))
                         color: "#cccccc"
                     }
-                    TextArea {
-                        id: authCertificate
-                        text: App.authInfo.certificate
-                        readOnly: true
-                        wrapMode: TextArea.WrapAnywhere
-                        selectByMouse: true
-                        padding: 8
+                    Frame {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: Math.min(180, authCertificate.contentHeight + 2 * padding)
-                        font.family: "monospace"
-                        verticalScrollBarPolicy: Qt.ScrollBarAsNeeded
-                        horizontalScrollBarPolicy: Qt.ScrollBarAlwaysOff
-                        background: Rectangle { color: "#1e1e1e"; radius: 4 }
+                        Layout.preferredHeight: 160
+                        TextArea {
+                            id: authCertificate
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            readOnly: true
+                            wrapMode: TextArea.WrapAnywhere
+                            selectByMouse: true
+                            font.family: "monospace"
+                            text: String(App && App.authCertificate ? App.authCertificate : "")
+                            background: Rectangle { color: "transparent" }
+                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                            ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
+                        }
                     }
                 }
             }
@@ -77,90 +84,18 @@ ApplicationWindow {
 
                 GroupBox {
                     title: qsTr("Directory Service")
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: 320
-                    Layout.preferredWidth: Math.max(360, rootLayout.width * 0.35)
                     Layout.fillHeight: true
+                    Layout.preferredWidth: 360
 
                     ListView {
                         id: userList
                         anchors.fill: parent
                         clip: true
-                        model: App.userList
-                        spacing: 8
-                        delegate: ColumnLayout {
+                        spacing: 6
+                        model: (App && App.userList) ? App.userList : []
+                        delegate: ItemDelegate {
                             width: ListView.view.width
-                            spacing: 6
-
-                            property var user: modelData
-
-                            Label {
-                                text: qsTr("%1 (%2)").arg(user.displayName, user.userId)
-                                font.bold: true
-                            }
-
-                            Repeater {
-                                model: user.devices
-                                delegate: Frame {
-                                    Layout.fillWidth: true
-                                    property var device: modelData
-                                    background: Rectangle {
-                                        color: device.revoked ? "#402020" : "#202a40"
-                                        radius: 4
-                                    }
-
-                                    ColumnLayout {
-                                        anchors.fill: parent
-                                        anchors.margins: 8
-                                        spacing: 4
-
-                                        Label {
-                                            text: qsTr("Device %1").arg(device.deviceId)
-                                            font.bold: true
-                                        }
-                                        Label {
-                                            text: device.revoked ? qsTr("Статус: revoked") : qsTr("Статус: active")
-                                            color: device.revoked ? "#ff8080" : "#80ff80"
-                                        }
-                                        TextArea {
-                                            id: deviceCertificate
-                                            text: device.certificate
-                                            readOnly: true
-                                            wrapMode: TextArea.WrapAnywhere
-                                            selectByMouse: true
-                                            padding: 6
-                                            Layout.fillWidth: true
-                                            Layout.preferredHeight: Math.min(140, deviceCertificate.contentHeight + 2 * padding)
-                                            font.family: "monospace"
-                                            verticalScrollBarPolicy: Qt.ScrollBarAsNeeded
-                                            horizontalScrollBarPolicy: Qt.ScrollBarAlwaysOff
-                                            background: Rectangle { color: "transparent" }
-                                        }
-                                        RowLayout {
-                                            Layout.fillWidth: true
-                                            spacing: 8
-
-                                            Button {
-                                                text: qsTr("Rotate")
-                                                enabled: true
-                                                onClicked: App.rotateDevice(user.userId, device.deviceId)
-                                            }
-                                            Button {
-                                                text: qsTr("Revoke")
-                                                enabled: !device.revoked
-                                                onClicked: App.revokeDevice(user.userId, device.deviceId)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            Rectangle {
-                                Layout.fillWidth: true
-                                height: 1
-                                color: "#303030"
-                                visible: index < userList.count - 1
-                            }
+                            text: String(modelData)
                         }
                     }
                 }
@@ -188,69 +123,42 @@ ApplicationWindow {
                                 TextField {
                                     id: conversationField
                                     Layout.fillWidth: true
-                                    text: App.currentConversation
-                                    onTextEdited: App.currentConversation = text
+                                    text: String(App ? App.currentConversation : "")
+                                    onTextEdited: { if (App) App.currentConversation = text }
                                     Connections {
                                         target: App
-                                        function onCurrentConversationChanged() { conversationField.text = App.currentConversation }
+                                        function onCurrentConversationChanged() {
+                                            conversationField.text = String(App.currentConversation)
+                                        }
                                     }
                                 }
                                 Button {
                                     text: qsTr("Pull update")
-                                    onClicked: App.simulatePull()
+                                    onClicked: if (App && App.simulatePull) App.simulatePull()
                                 }
                             }
 
-                            ListView {
-                                id: chatView
+                            Frame {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                spacing: 10
-                                clip: true
-                                model: App.conversation
-                                delegate: Item {
-                                    width: ListView.view.width
-                                    implicitHeight: bubble.implicitHeight + meta.implicitHeight + 8
-
-                                    property var msg: modelData
-
-                                    Column {
-                                        anchors.left: msg.outgoing ? undefined : parent.left
-                                        anchors.right: msg.outgoing ? parent.right : undefined
-                                        anchors.leftMargin: msg.outgoing ? 120 : 0
-                                        anchors.rightMargin: msg.outgoing ? 0 : 120
-                                        width: parent.width - 80
-                                        spacing: 4
-
-                                        Label {
-                                            id: meta
-                                            text: qsTr("%1 • %2 • %3").arg(msg.author, msg.timestamp, msg.serverMsgId)
-                                            color: "#bbbbbb"
-                                            horizontalAlignment: msg.outgoing ? Text.AlignRight : Text.AlignLeft
-                                            wrapMode: Text.Wrap
-                                        }
-
-                                        Rectangle {
-                                            id: bubble
-                                            color: msg.outgoing ? "#3c6cc1" : "#2d2d2d"
-                                            radius: 8
-                                            anchors.left: msg.outgoing ? undefined : parent.left
-                                            anchors.right: msg.outgoing ? parent.right : undefined
-
-                                            Text {
-                                                text: msg.text
-                                                wrapMode: Text.WordWrap
-                                                color: "white"
-                                                anchors.margins: 10
-                                                anchors.fill: parent
-                                            }
-                                        }
+                                ListView {
+                                    id: chatView
+                                    anchors.fill: parent
+                                    anchors.margins: 6
+                                    clip: true
+                                    spacing: 6
+                                    model: (App && App.serverLog) ? App.serverLog : []
+                                    delegate: Label {
+                                        width: ListView.view.width
+                                        text: String(modelData)
+                                        wrapMode: Text.WordWrap
+                                        color: "#dddddd"
+                                        font.family: "monospace"
                                     }
-                                }
-
-                                Connections {
-                                    target: App
-                                    function onConversationChanged() { chatView.positionViewAtEnd() }
+                                    Connections {
+                                        target: App
+                                        function onServerLogChanged() { chatView.positionViewAtEnd() }
+                                    }
                                 }
                             }
 
@@ -269,8 +177,7 @@ ApplicationWindow {
                                     id: sendButton
                                     text: qsTr("Отправить")
                                     onClicked: {
-                                        if (input.text.length === 0)
-                                            return
+                                        if (!App || input.text.length === 0) return
                                         App.send(input.text)
                                         input.text = ""
                                     }
@@ -288,13 +195,13 @@ ApplicationWindow {
                             id: logView
                             anchors.fill: parent
                             clip: true
-                            model: App.serverLog
+                            model: (App && App.serverLog) ? App.serverLog : []
                             delegate: Label {
-                                text: modelData
+                                text: String(modelData)
                                 font.family: "monospace"
                                 color: "#cccccc"
+                                wrapMode: Text.WordWrap
                             }
-
                             Connections {
                                 target: App
                                 function onServerLogChanged() { logView.positionViewAtEnd() }
@@ -306,5 +213,5 @@ ApplicationWindow {
         }
     }
 
-    Component.onCompleted: App.refreshUsers()
+    Component.onCompleted: if (App && App.refreshUsers) App.refreshUsers()
 }
