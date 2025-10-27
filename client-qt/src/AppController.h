@@ -20,6 +20,8 @@ class AppController : public QObject {
     Q_PROPERTY(QVariantList conversation READ conversation NOTIFY conversationChanged)
     Q_PROPERTY(QStringList serverLog READ serverLog NOTIFY serverLogChanged)
     Q_PROPERTY(QString currentConversation READ currentConversation WRITE setCurrentConversation NOTIFY currentConversationChanged)
+    Q_PROPERTY(bool registered READ isRegistered NOTIFY registrationChanged)
+    Q_PROPERTY(QString nickname READ nickname NOTIFY registrationChanged)
 
 public:
     explicit AppController(QObject *parent = nullptr);
@@ -31,12 +33,16 @@ public:
     QString currentConversation() const;
     void setCurrentConversation(const QString &conversationId);
 
+    bool isRegistered() const;
+    QString nickname() const;
+
     Q_INVOKABLE void send(const QString &text);
     Q_INVOKABLE void startConversationWith(const QString &userId);
     Q_INVOKABLE void rotateDevice(const QString &userId, const QString &deviceId);
     Q_INVOKABLE void revokeDevice(const QString &userId, const QString &deviceId);
     Q_INVOKABLE void refreshUsers();
     Q_INVOKABLE void simulatePull();
+    Q_INVOKABLE void completeRegistration(const QString &nickname);
 
 signals:
     void authInfoChanged();
@@ -44,6 +50,7 @@ signals:
     void conversationChanged();
     void serverLogChanged();
     void currentConversationChanged();
+    void registrationChanged();
 
 private:
     struct Device {
@@ -71,6 +78,10 @@ private:
     QVariantList buildConversation() const;
 
     void loadServerData();
+    void initializeAfterRegistration();
+    void applyRegisteredNickname();
+    void loadRegistration();
+    void persistRegistration(const QString &nickname);
     bool loadUserDirectory(const QString &path);
     bool loadMessageHistory(const QString &path);
     void fetchHistoryFromServer(const QString &sinceServerMsgId = QString());
@@ -95,6 +106,9 @@ private:
     User *findUser(const QString &userId);
     Device *findDevice(const QString &userId, const QString &deviceId);
 
+    bool m_isRegistered = false;
+    QString m_registeredNickname;
+    bool m_initialized = false;
     User m_authenticatedUser;
     QList<User> m_directory;
     QHash<QString, QList<Message>> m_conversations;

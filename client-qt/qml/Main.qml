@@ -23,7 +23,11 @@ ApplicationWindow {
     readonly property color bubbleIncoming: "#1f6f43"
 
     header: ToolBar {
+        id: mainToolbar
         padding: 12
+        visible: App && App.registered
+        height: visible ? implicitHeight : 0
+        enabled: visible
         background: Rectangle { color: panelColor }
 
         contentItem: RowLayout {
@@ -62,10 +66,136 @@ ApplicationWindow {
         }
     }
 
-    ColumnLayout {
+    StackLayout {
         anchors.fill: parent
-        anchors.margins: 20
-        spacing: 18
+        currentIndex: App && App.registered ? 1 : 0
+
+        Item {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 40
+                spacing: 24
+
+                Pane {
+                    Layout.fillWidth: true
+                    padding: 24
+                    background: Rectangle {
+                        color: panelColor
+                        radius: 16
+                        border.color: panelBorder
+                    }
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 12
+
+                        Label {
+                            text: qsTr("Secure Messenger Demo")
+                            font.pixelSize: 22
+                            font.bold: true
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            color: subtleText
+                            text: qsTr("Демонстрационный клиент защищённого корпоративного мессенджера. Использует mTLS, каталоги пользователей и репликацию переписки для изолированной тестовой среды.")
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            color: subtleText
+                            text: qsTr("Перед началом работы укажите никнейм, под которым устройство будет входить в систему.")
+                        }
+                    }
+                }
+
+                Pane {
+                    Layout.fillWidth: true
+                    padding: 24
+                    background: Rectangle {
+                        color: panelColor
+                        radius: 16
+                        border.color: panelBorder
+                    }
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 16
+
+                        function submitRegistration() {
+                            const trimmed = nicknameField.text.trim();
+                            if (trimmed.length < 3) {
+                                nicknameField.forceActiveFocus();
+                                return;
+                            }
+                            if (App && App.completeRegistration)
+                                App.completeRegistration(trimmed);
+                        }
+
+                        Label {
+                            text: qsTr("Регистрация устройства")
+                            font.pixelSize: 18
+                            font.bold: true
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            color: subtleText
+                            text: qsTr("Никнейм отображается для остальных участников и сохраняется локально на этом устройстве.")
+                        }
+
+                        TextField {
+                            id: nicknameField
+                            Layout.fillWidth: true
+                            placeholderText: qsTr("Ваш никнейм")
+                            selectByMouse: true
+                            focus: true
+                            onAccepted: submitRegistration()
+                            Component.onCompleted: forceActiveFocus()
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 12
+
+                            Button {
+                                id: registerButton
+                                text: qsTr("Зарегистрироваться")
+                                icon.name: "user"
+                                enabled: nicknameField.text.trim().length >= 3
+                                onClicked: submitRegistration()
+                            }
+
+                            Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                color: subtleText
+                                visible: nicknameField.text.trim().length < 3
+                                text: qsTr("Минимум 3 символа. Вы всегда можете изменить никнейм в настройках устройства.")
+                            }
+                        }
+                    }
+                }
+
+                Item { Layout.fillHeight: true }
+            }
+        }
+
+        Item {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 20
+                spacing: 18
+        
 
         SplitView {
             Layout.fillWidth: true
@@ -738,6 +868,16 @@ ApplicationWindow {
             }
         }
     }
+    }
+    }
 
-    Component.onCompleted: if (App && App.refreshUsers) App.refreshUsers()
+    Connections {
+        target: App
+        function onRegistrationChanged() {
+            if (App && App.registered && App.refreshUsers)
+                App.refreshUsers()
+        }
+    }
+
+    Component.onCompleted: if (App && App.registered && App.refreshUsers) App.refreshUsers()
 }

@@ -1,9 +1,13 @@
+#include <QCoreApplication>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include "AppController.h"
 
 int main(int argc, char *argv[]) {
+    QCoreApplication::setOrganizationName(QStringLiteral("SecureMessenger"));
+    QCoreApplication::setOrganizationDomain(QStringLiteral("example.com"));
+    QCoreApplication::setApplicationName(QStringLiteral("SecureMessengerClient"));
     QGuiApplication app(argc, argv);
     QQmlApplicationEngine engine;
 

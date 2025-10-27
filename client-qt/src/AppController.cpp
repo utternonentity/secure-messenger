@@ -12,6 +12,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QSettings>
 #include <QTimer>
 #include <QUrl>
 #include <QUrlQuery>
@@ -40,32 +41,12 @@ AppController::AppController(QObject *parent)
         m_apiBaseUrl = QStringLiteral("http://127.0.0.1:8080");
     }
 
-    loadServerData();
-
-    int totalMessages = 0;
-    for (const QList<Message> &messages : std::as_const(m_conversations)) {
-        totalMessages += messages.size();
+    loadRegistration();
+    if (m_isRegistered) {
+        initializeAfterRegistration();
     }
 
-    appendLog(QStringLiteral("Auth.WhoAmI -> %1 (%2)")
-                  .arg(m_authenticatedUser.userId, m_authenticatedUser.displayName));
-    appendLog(QStringLiteral("Directory.ListUsers -> %1 профиля")
-                  .arg(m_directory.size()));
-    appendLog(QStringLiteral("Messaging.LoadHistory -> локальный кэш %1 сообщений в %2 каналах")
-                  .arg(totalMessages)
-                  .arg(m_conversations.size()));
-    appendLog(QStringLiteral("Messaging.Pull -> подписка на %1")
-                  .arg(m_currentConversation));
-    appendLog(QStringLiteral("Messaging.HTTP -> базовый URL %1")
-                  .arg(m_apiBaseUrl));
-
-    emit authInfoChanged();
-    emit userListChanged();
-    emit conversationChanged();
-    emit currentConversationChanged();
-
-    fetchHistoryFromServer();
-    m_pollTimer->start();
+    emit registrationChanged();
 }
 
 QVariantMap AppController::authInfo() const
@@ -106,6 +87,16 @@ void AppController::setCurrentConversation(const QString &conversationId)
     appendLog(QStringLiteral("Messaging.Pull -> подписка обновлена, канал %1").arg(m_currentConversation));
     emit currentConversationChanged();
     emit conversationChanged();
+}
+
+bool AppController::isRegistered() const
+{
+    return m_isRegistered;
+}
+
+QString AppController::nickname() const
+{
+    return m_registeredNickname;
 }
 
 void AppController::send(const QString &text)
@@ -214,6 +205,29 @@ void AppController::simulatePull()
     fetchHistoryFromServer(m_lastServerMsgId);
 }
 
+void AppController::completeRegistration(const QString &nickname)
+{
+    const QString trimmed = nickname.trimmed();
+    if (trimmed.isEmpty()) {
+        return;
+    }
+
+    const QString previousNickname = m_registeredNickname;
+    const bool wasRegistered = m_isRegistered;
+
+    persistRegistration(trimmed);
+    m_registeredNickname = trimmed;
+    m_isRegistered = true;
+
+    initializeAfterRegistration();
+
+    if (!wasRegistered || previousNickname != trimmed) {
+        appendLog(QStringLiteral("Registration -> активирован локальный профиль %1").arg(trimmed));
+    }
+
+    emit registrationChanged();
+}
+
 QVariantMap AppController::buildAuthInfo() const
 {
     QVariantMap map;
@@ -268,6 +282,84 @@ QVariantList AppController::buildConversation() const
         list.append(entry);
     }
     return list;
+}
+
+void AppController::initializeAfterRegistration()
+{
+    if (m_initialized) {
+        applyRegisteredNickname();
+        ensureDirectoryContainsAuthUser();
+        emit authInfoChanged();
+        emit userListChanged();
+        return;
+    }
+
+    m_initialized = true;
+
+    loadServerData();
+    applyRegisteredNickname();
+    ensureDirectoryContainsAuthUser();
+
+    int totalMessages = 0;
+    for (const QList<Message> &messages : std::as_const(m_conversations)) {
+        totalMessages += messages.size();
+    }
+
+    appendLog(QStringLiteral("Auth.WhoAmI -> %1 (%2)")
+                  .arg(m_authenticatedUser.userId, m_authenticatedUser.displayName));
+    appendLog(QStringLiteral("Directory.ListUsers -> %1 профиля")
+                  .arg(m_directory.size()));
+    appendLog(QStringLiteral("Messaging.LoadHistory -> локальный кэш %1 сообщений в %2 каналах")
+                  .arg(totalMessages)
+                  .arg(m_conversations.size()));
+    appendLog(QStringLiteral("Messaging.Pull -> подписка на %1")
+                  .arg(m_currentConversation));
+    appendLog(QStringLiteral("Messaging.HTTP -> базовый URL %1")
+                  .arg(m_apiBaseUrl));
+
+    emit authInfoChanged();
+    emit userListChanged();
+    emit conversationChanged();
+    emit currentConversationChanged();
+
+    fetchHistoryFromServer();
+    m_pollTimer->start();
+}
+
+void AppController::applyRegisteredNickname()
+{
+    const QString trimmed = m_registeredNickname.trimmed();
+    if (trimmed.isEmpty()) {
+        return;
+    }
+
+    m_authenticatedUser.displayName = trimmed;
+    for (User &user : m_directory) {
+        if (user.userId == m_authenticatedUser.userId) {
+            user.displayName = trimmed;
+            break;
+        }
+    }
+}
+
+void AppController::loadRegistration()
+{
+    QSettings settings;
+    const QString storedNickname = settings.value(QStringLiteral("registration/nickname")).toString().trimmed();
+    if (storedNickname.isEmpty()) {
+        m_isRegistered = false;
+        m_registeredNickname.clear();
+    } else {
+        m_isRegistered = true;
+        m_registeredNickname = storedNickname;
+    }
+}
+
+void AppController::persistRegistration(const QString &nickname)
+{
+    QSettings settings;
+    settings.setValue(QStringLiteral("registration/nickname"), nickname);
+    settings.sync();
 }
 
 void AppController::loadServerData()
