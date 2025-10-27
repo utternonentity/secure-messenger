@@ -1,3 +1,5 @@
+<<<<<<< ours
+=======
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
@@ -79,18 +81,9 @@ ApplicationWindow {
                 SplitView.preferredWidth: 360
                 SplitView.maximumWidth: 420
 
-<<<<<<< ours
-            ColumnLayout {
-                Layout.minimumWidth: 320
-                Layout.preferredWidth: 360
-                Layout.maximumWidth: 420
-                Layout.fillHeight: true
-                spacing: 18
-=======
                 ColumnLayout {
                     anchors.fill: parent
                     spacing: 18
->>>>>>> theirs
 
                 Pane {
                     Layout.fillWidth: true
@@ -272,11 +265,7 @@ ApplicationWindow {
                                         margins: 6
                                     }
                                     radius: 12
-<<<<<<< ours
-                                    color: "#1b2735"
-=======
                                     color: isSelf ? "#243046" : "#1b2735"
->>>>>>> theirs
                                     border.color: panelBorder
                                     implicitHeight: contentColumn.implicitHeight + 24
 
@@ -339,8 +328,6 @@ ApplicationWindow {
 
                                                             Label {
                                                                 Layout.fillWidth: true
-<<<<<<< ours
-=======
                                                                 text: String(modelData["label"] || "")
                                                                 color: subtleText
                                                                 font.pixelSize: 12
@@ -349,7 +336,6 @@ ApplicationWindow {
 
                                                             Label {
                                                                 Layout.fillWidth: true
->>>>>>> theirs
                                                                 text: {
                                                                     const cert = String(modelData["certificate"] || "")
                                                                     return cert.length > 36 ? cert.slice(0, 36) + "…" : cert
@@ -375,7 +361,6 @@ ApplicationWindow {
                                                             spacing: 8
 
                                                             Item { Layout.fillWidth: true }
-<<<<<<< ours
 
                                                             Button {
                                                                 text: qsTr("Rotate cert")
@@ -384,16 +369,6 @@ ApplicationWindow {
                                                             }
 
                                                             Button {
-=======
-
-                                                            Button {
-                                                                text: qsTr("Rotate cert")
-                                                                enabled: App && App.rotateDevice
-                                                                onClicked: if (App) App.rotateDevice(String(entry.userId || ""), String(modelData["deviceId"] || ""))
-                                                            }
-
-                                                            Button {
->>>>>>> theirs
                                                                 text: (modelData["revoked"] === true) ? qsTr("Отозвано") : qsTr("Revoke")
                                                                 enabled: App && App.revokeDevice && !(modelData["revoked"] === true)
                                                                 onClicked: if (App) App.revokeDevice(String(entry.userId || ""), String(modelData["deviceId"] || ""))
@@ -649,3 +624,4 @@ ApplicationWindow {
 
     Component.onCompleted: if (App && App.refreshUsers) App.refreshUsers()
 }
+>>>>>>> theirs
