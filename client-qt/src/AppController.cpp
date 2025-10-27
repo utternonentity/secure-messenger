@@ -13,6 +13,7 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QSettings>
+#include <QScopedValueRollback>
 #include <QTimer>
 #include <QUrl>
 #include <QUrlQuery>
@@ -197,6 +198,10 @@ void AppController::refreshUsers()
     }
     emit authInfoChanged();
     emit userListChanged();
+
+    if (m_isRegistered) {
+        fetchUsersFromServer();
+    }
 }
 
 void AppController::simulatePull()
@@ -212,20 +217,84 @@ void AppController::completeRegistration(const QString &nickname)
         return;
     }
 
-    const QString previousNickname = m_registeredNickname;
-    const bool wasRegistered = m_isRegistered;
-
-    persistRegistration(trimmed);
-    m_registeredNickname = trimmed;
-    m_isRegistered = true;
-
-    initializeAfterRegistration();
-
-    if (!wasRegistered || previousNickname != trimmed) {
-        appendLog(QStringLiteral("Registration -> активирован локальный профиль %1").arg(trimmed));
+    if (!m_networkManager) {
+        appendLog(QStringLiteral("Registration -> сетевой менеджер не инициализирован"));
+        return;
+    }
+    if (m_registrationInFlight) {
+        appendLog(QStringLiteral("Registration -> запрос уже выполняется"));
+        return;
     }
 
-    emit registrationChanged();
+    const QUrl url = buildApiUrl(QStringLiteral("/api/auth/register"));
+    if (!url.isValid()) {
+        appendLog(QStringLiteral("Registration -> некорректный адрес API (%1)").arg(m_apiBaseUrl));
+        return;
+    }
+
+    QJsonObject payload;
+    payload.insert(QStringLiteral("nickname"), trimmed);
+
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+
+    auto *reply = m_networkManager->post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+    m_registrationInFlight = true;
+
+    appendLog(QStringLiteral("Registration -> отправлен запрос на регистрацию '%1'").arg(trimmed));
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, trimmed]() {
+        QScopedValueRollback<bool> rollback(m_registrationInFlight, false);
+        const QNetworkReply::NetworkError error = reply->error();
+        const QString errorText = reply->errorString();
+        const QByteArray payload = reply->readAll();
+        const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        reply->deleteLater();
+
+        if (error != QNetworkReply::NoError) {
+            appendLog(QStringLiteral("Registration -> ошибка запроса: %1").arg(errorText));
+            return;
+        }
+        if (statusCode >= 400) {
+            const QString serverMsg = QString::fromUtf8(payload).trimmed();
+            appendLog(QStringLiteral("Registration -> сервер вернул %1 %2")
+                          .arg(statusCode)
+                          .arg(serverMsg.isEmpty() ? QStringLiteral("")
+                                                   : QStringLiteral("(%1)").arg(serverMsg)));
+            return;
+        }
+
+        QJsonParseError parseError{};
+        const QJsonDocument doc = QJsonDocument::fromJson(payload, &parseError);
+        if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+            appendLog(QStringLiteral("Registration -> некорректный ответ сервера"));
+            return;
+        }
+
+        const QJsonObject obj = doc.object();
+        const QString userId = obj.value(QStringLiteral("user_id")).toString().trimmed();
+        QString assignedNickname = obj.value(QStringLiteral("nickname")).toString(trimmed).trimmed();
+        if (assignedNickname.isEmpty()) {
+            assignedNickname = trimmed;
+        }
+        if (userId.isEmpty()) {
+            appendLog(QStringLiteral("Registration -> сервер не вернул идентификатор пользователя"));
+            return;
+        }
+
+        m_registeredUserId = userId;
+        m_registeredNickname = assignedNickname;
+        m_isRegistered = true;
+        persistRegistration(userId, assignedNickname);
+
+        appendLog(QStringLiteral("Registration -> активирован профиль %1 (%2)")
+                      .arg(assignedNickname, userId));
+
+        emit registrationChanged();
+
+        initializeAfterRegistration();
+        fetchUsersFromServer();
+    });
 }
 
 QVariantMap AppController::buildAuthInfo() const
@@ -287,17 +356,20 @@ QVariantList AppController::buildConversation() const
 void AppController::initializeAfterRegistration()
 {
     if (m_initialized) {
-        applyRegisteredNickname();
+        applyRegisteredIdentity();
         ensureDirectoryContainsAuthUser();
         emit authInfoChanged();
         emit userListChanged();
+        if (m_isRegistered) {
+            fetchUsersFromServer();
+        }
         return;
     }
 
     m_initialized = true;
 
     loadServerData();
-    applyRegisteredNickname();
+    applyRegisteredIdentity();
     ensureDirectoryContainsAuthUser();
 
     int totalMessages = 0;
@@ -323,42 +395,70 @@ void AppController::initializeAfterRegistration()
     emit currentConversationChanged();
 
     fetchHistoryFromServer();
+    if (m_isRegistered) {
+        fetchUsersFromServer();
+    }
     m_pollTimer->start();
 }
 
-void AppController::applyRegisteredNickname()
+void AppController::applyRegisteredIdentity()
 {
-    const QString trimmed = m_registeredNickname.trimmed();
-    if (trimmed.isEmpty()) {
+    const QString trimmedUserId = m_registeredUserId.trimmed();
+    const QString trimmedNickname = m_registeredNickname.trimmed();
+
+    if (!trimmedUserId.isEmpty()) {
+        m_authenticatedUser.userId = trimmedUserId;
+    }
+    if (!trimmedNickname.isEmpty()) {
+        m_authenticatedUser.nickname = trimmedNickname;
+    }
+
+    if (trimmedUserId.isEmpty()) {
         return;
     }
 
-    m_authenticatedUser.nickname = trimmed;
     for (User &user : m_directory) {
-        if (user.userId == m_authenticatedUser.userId) {
-            user.nickname = trimmed;
-            break;
+        if (user.userId == trimmedUserId) {
+            if (!trimmedNickname.isEmpty()) {
+                user.nickname = trimmedNickname;
+            }
+            return;
         }
     }
+
+    User user = m_authenticatedUser;
+    user.userId = trimmedUserId;
+    user.nickname = trimmedNickname.isEmpty() ? user.userId : trimmedNickname;
+    m_directory.prepend(user);
 }
 
 void AppController::loadRegistration()
 {
     QSettings settings;
     const QString storedNickname = settings.value(QStringLiteral("registration/nickname")).toString().trimmed();
-    if (storedNickname.isEmpty()) {
+    const QString storedUserId = settings.value(QStringLiteral("registration/userId")).toString().trimmed();
+
+    m_registeredNickname = storedNickname;
+    m_registeredUserId = storedUserId;
+
+    if (storedNickname.isEmpty() || storedUserId.isEmpty()) {
         m_isRegistered = false;
-        m_registeredNickname.clear();
+        if (storedNickname.isEmpty()) {
+            m_registeredNickname.clear();
+        }
+        if (storedUserId.isEmpty()) {
+            m_registeredUserId.clear();
+        }
     } else {
         m_isRegistered = true;
-        m_registeredNickname = storedNickname;
     }
 }
 
-void AppController::persistRegistration(const QString &nickname)
+void AppController::persistRegistration(const QString &userId, const QString &nickname)
 {
     QSettings settings;
-    settings.setValue(QStringLiteral("registration/nickname"), nickname);
+    settings.setValue(QStringLiteral("registration/userId"), userId.trimmed());
+    settings.setValue(QStringLiteral("registration/nickname"), nickname.trimmed());
     settings.sync();
 }
 
@@ -446,64 +546,109 @@ bool AppController::loadUserDirectory(const QString &path)
 
     QJsonParseError parseError{};
     const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
-    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+    if (parseError.error != QJsonParseError::NoError) {
         return false;
     }
-    const QJsonArray users = doc.object().value(QStringLiteral("users")).toArray();
-    if (users.isEmpty()) {
+    return applyDirectoryFromJson(doc);
+}
+
+bool AppController::applyDirectoryFromJson(const QJsonDocument &doc)
+{
+    if (!doc.isObject()) {
         return false;
     }
 
-    m_directory.clear();
-    QString preferredUserId = qEnvironmentVariable("SM_AUTH_USER_ID").trimmed();
+    const QJsonArray usersArray = doc.object().value(QStringLiteral("users")).toArray();
+    if (usersArray.isEmpty()) {
+        return false;
+    }
+
+    QList<User> parsedUsers;
+    parsedUsers.reserve(usersArray.size());
+
+    QString preferredUserId = m_registeredUserId.trimmed();
     if (preferredUserId.isEmpty()) {
-        preferredUserId = users.first().toObject().value(QStringLiteral("user_id")).toString();
+        preferredUserId = qEnvironmentVariable("SM_AUTH_USER_ID").trimmed();
     }
 
-    for (const QJsonValue &userValue : users) {
+    User selectedUser;
+    QStringList selectedRoles;
+    QStringList firstUserRoles;
+
+    for (const QJsonValue &userValue : usersArray) {
         if (!userValue.isObject()) {
             continue;
         }
+
         const QJsonObject obj = userValue.toObject();
         User user;
-        user.userId = obj.value(QStringLiteral("user_id")).toString();
-        user.nickname = obj.value(QStringLiteral("nickname")).toString(user.userId);
+        user.userId = obj.value(QStringLiteral("user_id")).toString().trimmed();
+        user.nickname = obj.value(QStringLiteral("nickname")).toString(user.userId).trimmed();
 
-        const QJsonObject devicesObj = obj.value(QStringLiteral("devices")).toObject();
-        for (auto it = devicesObj.constBegin(); it != devicesObj.constEnd(); ++it) {
-            const QJsonObject deviceObj = it.value().toObject();
-            Device device;
-            device.deviceId = deviceObj.value(QStringLiteral("device_id")).toString(it.key());
-            device.certificate = deviceObj.value(QStringLiteral("cert_der")).toString();
-            device.revoked = deviceObj.value(QStringLiteral("revoked")).toBool(false);
-            user.devices.append(device);
-        }
-        m_directory.append(user);
-
-        if (user.userId == preferredUserId) {
-            m_authenticatedUser = user;
-            m_authenticatedRoles.clear();
-            const QJsonArray roles = obj.value(QStringLiteral("roles")).toArray();
-            for (const QJsonValue &roleValue : roles) {
-                const QString role = roleValue.toString().trimmed();
-                if (!role.isEmpty()) {
-                    m_authenticatedRoles.append(role);
+        const QJsonValue devicesValue = obj.value(QStringLiteral("devices"));
+        if (devicesValue.isObject()) {
+            const QJsonObject devicesObj = devicesValue.toObject();
+            for (auto it = devicesObj.constBegin(); it != devicesObj.constEnd(); ++it) {
+                if (!it.value().isObject()) {
+                    continue;
                 }
+                const QJsonObject deviceObj = it.value().toObject();
+                Device device;
+                device.deviceId = deviceObj.value(QStringLiteral("device_id")).toString(it.key());
+                device.certificate = deviceObj.value(QStringLiteral("cert_der")).toString();
+                device.revoked = deviceObj.value(QStringLiteral("revoked")).toBool(false);
+                user.devices.append(device);
+            }
+        } else if (devicesValue.isArray()) {
+            const QJsonArray devicesArray = devicesValue.toArray();
+            for (const QJsonValue &deviceValue : devicesArray) {
+                if (!deviceValue.isObject()) {
+                    continue;
+                }
+                const QJsonObject deviceObj = deviceValue.toObject();
+                Device device;
+                device.deviceId = deviceObj.value(QStringLiteral("device_id")).toString(deviceObj.value(QStringLiteral("id")).toString());
+                device.certificate = deviceObj.value(QStringLiteral("cert_der")).toString();
+                device.revoked = deviceObj.value(QStringLiteral("revoked")).toBool(false);
+                user.devices.append(device);
             }
         }
-    }
 
-    if (m_authenticatedUser.userId.isEmpty()) {
-        m_authenticatedUser = m_directory.first();
-        const QJsonArray roles = users.first().toObject().value(QStringLiteral("roles")).toArray();
-        for (const QJsonValue &roleValue : roles) {
+        parsedUsers.append(user);
+
+        QStringList rolesForUser;
+        const QJsonArray rolesArray = obj.value(QStringLiteral("roles")).toArray();
+        for (const QJsonValue &roleValue : rolesArray) {
             const QString role = roleValue.toString().trimmed();
             if (!role.isEmpty()) {
-                m_authenticatedRoles.append(role);
+                rolesForUser.append(role);
             }
+        }
+        if (parsedUsers.size() == 1) {
+            firstUserRoles = rolesForUser;
+        }
+        if (!preferredUserId.isEmpty() && user.userId == preferredUserId) {
+            selectedUser = user;
+            selectedRoles = rolesForUser;
         }
     }
 
+    if (parsedUsers.isEmpty()) {
+        return false;
+    }
+
+    if (selectedUser.userId.isEmpty()) {
+        selectedUser = parsedUsers.first();
+        selectedRoles = firstUserRoles;
+    }
+
+    if (selectedRoles.isEmpty()) {
+        selectedRoles.append(QStringLiteral("user"));
+    }
+
+    m_directory = parsedUsers;
+    m_authenticatedUser = selectedUser;
+    m_authenticatedRoles = selectedRoles;
     return true;
 }
 
@@ -647,6 +792,81 @@ void AppController::fetchHistoryFromServer(const QString &sinceServerMsgId)
             appendLog(QStringLiteral("Messaging.Pull -> получено %1 новых сообщений")
                           .arg(added));
         }
+    });
+}
+
+void AppController::fetchUsersFromServer()
+{
+    if (!m_isRegistered) {
+        return;
+    }
+    if (!m_networkManager) {
+        appendLog(QStringLiteral("Directory.HTTP -> сетевой менеджер не инициализирован"));
+        return;
+    }
+
+    const QUrl url = buildApiUrl(QStringLiteral("/api/auth/users"));
+    if (!url.isValid()) {
+        appendLog(QStringLiteral("Directory.HTTP -> некорректный адрес API (%1)").arg(m_apiBaseUrl));
+        return;
+    }
+
+    appendLog(QStringLiteral("Directory.HTTP -> запрос каталога пользователей"));
+
+    QNetworkRequest request(url);
+    auto *reply = m_networkManager->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        const QNetworkReply::NetworkError error = reply->error();
+        const QString errorText = reply->errorString();
+        const QByteArray payload = reply->readAll();
+        const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        reply->deleteLater();
+
+        if (error != QNetworkReply::NoError) {
+            appendLog(QStringLiteral("Directory.HTTP -> ошибка получения каталога: %1").arg(errorText));
+            return;
+        }
+        if (statusCode >= 400) {
+            const QString serverMsg = QString::fromUtf8(payload).trimmed();
+            appendLog(QStringLiteral("Directory.HTTP -> сервер вернул %1 %2")
+                          .arg(statusCode)
+                          .arg(serverMsg.isEmpty() ? QStringLiteral("")
+                                                   : QStringLiteral("(%1)").arg(serverMsg)));
+            return;
+        }
+
+        QJsonParseError parseError{};
+        const QJsonDocument doc = QJsonDocument::fromJson(payload, &parseError);
+        if (parseError.error != QJsonParseError::NoError) {
+            appendLog(QStringLiteral("Directory.HTTP -> некорректный JSON: %1").arg(parseError.errorString()));
+            return;
+        }
+
+        if (!applyDirectoryFromJson(doc)) {
+            appendLog(QStringLiteral("Directory.HTTP -> не удалось обновить каталог"));
+            return;
+        }
+
+        ensureDirectoryContainsAuthUser();
+
+        const QString previousUserId = m_registeredUserId;
+        const QString previousNickname = m_registeredNickname;
+
+        if (!m_authenticatedUser.userId.isEmpty()) {
+            m_registeredUserId = m_authenticatedUser.userId;
+            m_registeredNickname = m_authenticatedUser.nickname;
+            persistRegistration(m_registeredUserId, m_registeredNickname);
+        }
+
+        if (m_registeredUserId != previousUserId || m_registeredNickname != previousNickname) {
+            emit registrationChanged();
+        }
+
+        appendLog(QStringLiteral("Directory.HTTP -> обновлено, %1 профиля")
+                      .arg(m_directory.size()));
+
+        emit authInfoChanged();
+        emit userListChanged();
     });
 }
 

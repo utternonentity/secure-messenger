@@ -23,6 +23,24 @@ type registerResponse struct {
 	Nickname string `json:"nickname"`
 }
 
+type listUsersResponse struct {
+	Users []userProfileResponse `json:"users"`
+}
+
+type userProfileResponse struct {
+	UserID   string           `json:"user_id"`
+	Nickname string           `json:"nickname"`
+	Roles    []string         `json:"roles"`
+	Devices  []deviceResponse `json:"devices"`
+}
+
+type deviceResponse struct {
+	DeviceID    string `json:"device_id"`
+	CertDER     []byte `json:"cert_der"`
+	Revoked     bool   `json:"revoked"`
+	UpdatedUnix int64  `json:"updated_unix"`
+}
+
 // NewHTTPHandler exposes a minimal endpoint for registering users by nickname.
 func NewHTTPHandler(manager *identity.Manager) (http.Handler, error) {
 	if manager == nil {
@@ -31,6 +49,7 @@ func NewHTTPHandler(manager *identity.Manager) (http.Handler, error) {
 	server := &httpServer{identities: manager}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/auth/register", server.handleRegister)
+	mux.HandleFunc("/api/auth/users", server.handleListUsers)
 	return mux, nil
 }
 
@@ -74,6 +93,50 @@ func (s *httpServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 		Nickname: profile.Nickname,
 	}
 	writeJSON(w, http.StatusCreated, resp)
+}
+
+func (s *httpServer) handleListUsers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	profiles, err := s.identities.ListProfiles(r.Context())
+	if err != nil {
+		switch {
+		case errors.Is(err, context.Canceled):
+			http.Error(w, http.StatusText(http.StatusRequestTimeout), http.StatusRequestTimeout)
+		case errors.Is(err, context.DeadlineExceeded):
+			http.Error(w, http.StatusText(http.StatusGatewayTimeout), http.StatusGatewayTimeout)
+		default:
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	resp := listUsersResponse{Users: make([]userProfileResponse, 0, len(profiles))}
+	for _, profile := range profiles {
+		resp.Users = append(resp.Users, convertIdentityProfile(profile))
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func convertIdentityProfile(profile identity.Profile) userProfileResponse {
+	devices := make([]deviceResponse, 0, len(profile.Devices))
+	for _, dev := range profile.Devices {
+		devices = append(devices, deviceResponse{
+			DeviceID:    dev.DeviceID,
+			CertDER:     append([]byte(nil), dev.CertDER...),
+			Revoked:     dev.Revoked,
+			UpdatedUnix: dev.Updated.Unix(),
+		})
+	}
+	return userProfileResponse{
+		UserID:   profile.UserID,
+		Nickname: profile.Nickname,
+		Roles:    append([]string(nil), profile.Roles...),
+		Devices:  devices,
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

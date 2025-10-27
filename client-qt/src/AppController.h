@@ -79,12 +79,14 @@ private:
 
     void loadServerData();
     void initializeAfterRegistration();
-    void applyRegisteredNickname();
+    void applyRegisteredIdentity();
     void loadRegistration();
-    void persistRegistration(const QString &nickname);
+    void persistRegistration(const QString &userId, const QString &nickname);
     bool loadUserDirectory(const QString &path);
+    bool applyDirectoryFromJson(const QJsonDocument &doc);
     bool loadMessageHistory(const QString &path);
     void fetchHistoryFromServer(const QString &sinceServerMsgId = QString());
+    void fetchUsersFromServer();
     int handleMessagesResponse(const QJsonDocument &doc);
     void postMessageToServer(const QString &conversationId, const QString &text);
     void updateLastServerMsgId(const QString &serverMsgId);
@@ -108,6 +110,7 @@ private:
 
     bool m_isRegistered = false;
     QString m_registeredNickname;
+    QString m_registeredUserId;
     bool m_initialized = false;
     User m_authenticatedUser;
     QList<User> m_directory;
@@ -121,4 +124,5 @@ private:
     QNetworkAccessManager *m_networkManager = nullptr;
     QTimer *m_pollTimer = nullptr;
     QString m_apiBaseUrl;
+    bool m_registrationInFlight = false;
 };

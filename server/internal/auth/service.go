@@ -32,7 +32,7 @@ func (s *Service) WhoAmI(ctx context.Context, _ *smv1.Empty) (*smv1.WhoAmIRespon
 
 	return &smv1.WhoAmIResponse{
 		UserId:        ident.UserID,
-		DisplayName:   ident.DisplayName,
+		DisplayName:   ident.Nickname,
 		Roles:         ident.Roles,
 		DeviceId:      ident.DeviceID,
 		DeviceCertDer: ident.CertDER,
