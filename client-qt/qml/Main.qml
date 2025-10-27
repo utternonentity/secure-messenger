@@ -33,6 +33,7 @@ ApplicationWindow {
             width: parent.width
             spacing: 12
 
+            // ===== WhoAmI =====
             GroupBox {
                 title: qsTr("Auth.WhoAmI")
                 Layout.fillWidth: true
@@ -57,9 +58,12 @@ ApplicationWindow {
                               .arg(String(App && App.authInfoDeviceId ? App.authInfoDeviceId : ""))
                         color: "#cccccc"
                     }
+
                     Frame {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 160
+
+                        // Один TextArea без дублирующих свойств
                         TextArea {
                             id: authCertificate
                             anchors.fill: parent
@@ -82,6 +86,7 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 spacing: 12
 
+                // ===== Directory (упрощённо: QStringList) =====
                 GroupBox {
                     title: qsTr("Directory Service")
                     Layout.fillHeight: true
@@ -100,6 +105,7 @@ ApplicationWindow {
                     }
                 }
 
+                // ===== Messaging =====
                 ColumnLayout {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
@@ -120,6 +126,7 @@ ApplicationWindow {
                                 spacing: 8
 
                                 Label { text: qsTr("Conversation:") }
+
                                 TextField {
                                     id: conversationField
                                     Layout.fillWidth: true
@@ -132,6 +139,7 @@ ApplicationWindow {
                                         }
                                     }
                                 }
+
                                 Button {
                                     text: qsTr("Pull update")
                                     onClicked: if (App && App.simulatePull) App.simulatePull()
@@ -141,6 +149,7 @@ ApplicationWindow {
                             Frame {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
+
                                 ListView {
                                     id: chatView
                                     anchors.fill: parent
@@ -186,6 +195,7 @@ ApplicationWindow {
                         }
                     }
 
+                    // ===== Server debug log =====
                     GroupBox {
                         title: qsTr("Server debug log")
                         Layout.fillWidth: true
