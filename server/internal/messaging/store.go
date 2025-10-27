@@ -2,11 +2,12 @@ package messaging
 
 import (
 	"context"
-	"encoding/binary"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -26,58 +27,143 @@ type envelopeRepository interface {
 	ForEachSince(ctx context.Context, afterID int64, fn func(StoredEnvelope) error) error
 }
 
-const recordHeaderSize = 12 // 8 bytes id, 4 bytes payload length.
-
 type fileStore struct {
 	mu      sync.RWMutex
-	file    *os.File
+	path    string
 	records []fileRecord
 	nextID  int64
 }
 
 type fileRecord struct {
-	id      int64
-	payload []byte
+	id       int64
+	envelope *smv1.EncryptedEnvelope
 }
 
-// NewStore creates a persistent store backed by an append-only file.
+type jsonStore struct {
+	Messages []jsonMessage `json:"messages"`
+}
+
+type jsonMessage struct {
+	ID             int64  `json:"id"`
+	ConversationID string `json:"conversation_id"`
+	SenderUserID   string `json:"sender_user_id"`
+	SenderDeviceID string `json:"sender_device_id"`
+	SentUnixSec    int64  `json:"sent_unix_sec"`
+	CiphertextB64  string `json:"ciphertext_b64"`
+}
+
+// NewStore creates a persistent store backed by a JSON file.
 func NewStore(path string) (*fileStore, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, fmt.Errorf("store path must not be empty")
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
-	if err != nil {
-		return nil, fmt.Errorf("open store file: %w", err)
-	}
-
-	records, err := loadRecords(f)
-	if err != nil {
-		f.Close()
+	store := &fileStore{path: path}
+	if err := store.load(); err != nil {
 		return nil, err
 	}
-	if _, err := f.Seek(0, io.SeekEnd); err != nil {
-		f.Close()
-		return nil, fmt.Errorf("seek end: %w", err)
+	if err := store.persist(); err != nil {
+		return nil, err
 	}
-
-	var nextID int64
-	if n := len(records); n > 0 {
-		nextID = records[n-1].id
-	}
-
-	return &fileStore{file: f, records: records, nextID: nextID}, nil
+	return store, nil
 }
 
-// Close releases the underlying file descriptor.
-func (s *fileStore) Close() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.file == nil {
+// Close is kept for compatibility with previous implementations.
+func (s *fileStore) Close() error { return nil }
+
+func (s *fileStore) load() error {
+	data, err := os.ReadFile(s.path)
+	if errors.Is(err, os.ErrNotExist) {
+		s.records = nil
+		s.nextID = 0
 		return nil
 	}
-	err := s.file.Close()
-	s.file = nil
-	return err
+	if err != nil {
+		return fmt.Errorf("read message store: %w", err)
+	}
+	if len(data) == 0 {
+		s.records = nil
+		s.nextID = 0
+		return nil
+	}
+	var wrapper jsonStore
+	if err := json.Unmarshal(data, &wrapper); err != nil {
+		return fmt.Errorf("unmarshal message store: %w", err)
+	}
+	records := make([]fileRecord, 0, len(wrapper.Messages))
+	var maxID int64
+	for _, msg := range wrapper.Messages {
+		env := &smv1.EncryptedEnvelope{Meta: &smv1.EnvelopeMeta{}}
+		if msg.ConversationID != "" {
+			env.Meta.ConversationId = msg.ConversationID
+		}
+		if msg.SenderUserID != "" {
+			env.Meta.SenderUserId = msg.SenderUserID
+		}
+		if msg.SenderDeviceID != "" {
+			env.Meta.SenderDeviceId = msg.SenderDeviceID
+		}
+		if msg.SentUnixSec != 0 {
+			env.Meta.SentUnixSec = msg.SentUnixSec
+		}
+		if msg.CiphertextB64 != "" {
+			payload, err := base64.StdEncoding.DecodeString(msg.CiphertextB64)
+			if err != nil {
+				return fmt.Errorf("decode message %d ciphertext: %w", msg.ID, err)
+			}
+			env.Ciphertext = payload
+		}
+		records = append(records, fileRecord{id: msg.ID, envelope: env})
+		if msg.ID > maxID {
+			maxID = msg.ID
+		}
+	}
+	s.records = records
+	s.nextID = maxID
+	return nil
+}
+
+func (s *fileStore) persist() error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.persistLocked()
+}
+
+func (s *fileStore) persistLocked() error {
+	wrapper := jsonStore{Messages: make([]jsonMessage, 0, len(s.records))}
+	for _, rec := range s.records {
+		env := rec.envelope
+		meta := env.GetMeta()
+		msg := jsonMessage{ID: rec.id}
+		if meta != nil {
+			msg.ConversationID = meta.GetConversationId()
+			msg.SenderUserID = meta.GetSenderUserId()
+			msg.SenderDeviceID = meta.GetSenderDeviceId()
+			msg.SentUnixSec = meta.GetSentUnixSec()
+		}
+		if len(env.GetCiphertext()) > 0 {
+			msg.CiphertextB64 = base64.StdEncoding.EncodeToString(env.GetCiphertext())
+		}
+		wrapper.Messages = append(wrapper.Messages, msg)
+	}
+
+	data, err := json.MarshalIndent(&wrapper, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal message store: %w", err)
+	}
+	dir := filepath.Dir(s.path)
+	if dir != "." && dir != "" {
+		if err := os.MkdirAll(dir, 0o755); err != nil && !errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("prepare store directory: %w", err)
+		}
+	}
+	tmpPath := s.path + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0o600); err != nil {
+		return fmt.Errorf("write message store: %w", err)
+	}
+	if err := os.Rename(tmpPath, s.path); err != nil {
+		return fmt.Errorf("commit message store: %w", err)
+	}
+	return nil
 }
 
 func (s *fileStore) Save(ctx context.Context, env *smv1.EncryptedEnvelope) (int64, error) {
@@ -88,29 +174,18 @@ func (s *fileStore) Save(ctx context.Context, env *smv1.EncryptedEnvelope) (int6
 		return 0, err
 	}
 
-	payload, err := proto.Marshal(env)
-	if err != nil {
-		return 0, fmt.Errorf("marshal envelope: %w", err)
-	}
-
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.file == nil {
-		return 0, errors.New("store is closed")
-	}
-
 	id := s.nextID + 1
-	rec := fileRecord{id: id, payload: payload}
-	if err := writeRecord(s.file, rec); err != nil {
+	cloned := proto.Clone(env).(*smv1.EncryptedEnvelope)
+	s.records = append(s.records, fileRecord{id: id, envelope: cloned})
+	s.nextID = id
+	if err := s.persistLocked(); err != nil {
+		s.records = s.records[:len(s.records)-1]
+		s.nextID--
 		return 0, err
 	}
-	if err := s.file.Sync(); err != nil {
-		return 0, fmt.Errorf("sync store: %w", err)
-	}
-
-	s.records = append(s.records, rec)
-	s.nextID = id
 	return id, nil
 }
 
@@ -123,7 +198,7 @@ func (s *fileStore) ForEachSince(ctx context.Context, afterID int64, fn func(Sto
 	snapshot := make([]fileRecord, 0, len(s.records))
 	for _, rec := range s.records {
 		if rec.id > afterID {
-			snapshot = append(snapshot, rec)
+			snapshot = append(snapshot, fileRecord{id: rec.id, envelope: proto.Clone(rec.envelope).(*smv1.EncryptedEnvelope)})
 		}
 	}
 	s.mu.RUnlock()
@@ -132,60 +207,9 @@ func (s *fileStore) ForEachSince(ctx context.Context, afterID int64, fn func(Sto
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		env := new(smv1.EncryptedEnvelope)
-		if err := proto.Unmarshal(rec.payload, env); err != nil {
-			return fmt.Errorf("unmarshal envelope %d: %w", rec.id, err)
-		}
-		if err := fn(StoredEnvelope{ID: rec.id, Envelope: env}); err != nil {
+		if err := fn(StoredEnvelope{ID: rec.id, Envelope: rec.envelope}); err != nil {
 			return err
 		}
-	}
-	return nil
-}
-
-func loadRecords(f *os.File) ([]fileRecord, error) {
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return nil, fmt.Errorf("seek start: %w", err)
-	}
-	header := make([]byte, recordHeaderSize)
-	var records []fileRecord
-	for {
-		if _, err := io.ReadFull(f, header); err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			if errors.Is(err, io.ErrUnexpectedEOF) {
-				return nil, fmt.Errorf("truncated record header")
-			}
-			return nil, fmt.Errorf("read record header: %w", err)
-		}
-		length := binary.LittleEndian.Uint32(header[8:])
-		payload := make([]byte, length)
-		if _, err := io.ReadFull(f, payload); err != nil {
-			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-				return nil, fmt.Errorf("truncated record payload")
-			}
-			return nil, fmt.Errorf("read record payload: %w", err)
-		}
-		id := int64(binary.LittleEndian.Uint64(header[:8]))
-		records = append(records, fileRecord{id: id, payload: payload})
-	}
-	return records, nil
-}
-
-func writeRecord(f *os.File, rec fileRecord) error {
-	var header [recordHeaderSize]byte
-	binary.LittleEndian.PutUint64(header[:8], uint64(rec.id))
-	if len(rec.payload) > int(^uint32(0)) {
-		return fmt.Errorf("envelope too large: %d bytes", len(rec.payload))
-	}
-	binary.LittleEndian.PutUint32(header[8:], uint32(len(rec.payload)))
-
-	if _, err := f.Write(header[:]); err != nil {
-		return fmt.Errorf("write record header: %w", err)
-	}
-	if _, err := f.Write(rec.payload); err != nil {
-		return fmt.Errorf("write record payload: %w", err)
 	}
 	return nil
 }

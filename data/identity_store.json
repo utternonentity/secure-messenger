@@ -1,0 +1,62 @@
+{
+  "users": [
+    {
+      "user_id": "user-0001",
+      "display_name": "Иван Петров",
+      "roles": [
+        "admin",
+        "user"
+      ],
+      "devices": {
+        "device-ivan-laptop": {
+          "device_id": "device-ivan-laptop",
+          "cert_der": "RGV2aWNlIDAxIHByaW1hcnk=",
+          "revoked": false,
+          "updated_unix": 1709484000
+        },
+        "device-ivan-phone": {
+          "device_id": "device-ivan-phone",
+          "cert_der": "SXZhbiBwaG9uZQ==",
+          "revoked": false,
+          "updated_unix": 1709484000
+        }
+      }
+    },
+    {
+      "user_id": "user-0002",
+      "display_name": "Мария Сидорова",
+      "roles": [
+        "user"
+      ],
+      "devices": {
+        "device-maria-laptop": {
+          "device_id": "device-maria-laptop",
+          "cert_der": "TWFyaWEgbGFwdG9w",
+          "revoked": false,
+          "updated_unix": 1709484000
+        },
+        "device-maria-mobile": {
+          "device_id": "device-maria-mobile",
+          "cert_der": "TWFyaWEgbW9iaWxl",
+          "revoked": false,
+          "updated_unix": 1709484000
+        }
+      }
+    },
+    {
+      "user_id": "user-0003",
+      "display_name": "Олег Ким",
+      "roles": [
+        "user"
+      ],
+      "devices": {
+        "device-oleg-desktop": {
+          "device_id": "device-oleg-desktop",
+          "cert_der": "T2xlZyBkZXNrdG9w",
+          "revoked": false,
+          "updated_unix": 1709484000
+        }
+      }
+    }
+  ]
+}

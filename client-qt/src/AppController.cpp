@@ -1,55 +1,47 @@
 #include "AppController.h"
 
+#include <QByteArray>
+#include <QCoreApplication>
 #include <QDateTime>
+#include <QDir>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <utility>
 
 namespace {
-QString demoCertificate(const QString &deviceId, const QString &label)
+QString encodedCertificate(const QString &deviceId, const QString &label)
 {
-    return QStringLiteral("MIIF-%1-%2-BASE64==").arg(deviceId, label);
+    const QByteArray raw = QStringLiteral("%1:%2").arg(deviceId, label).toUtf8();
+    return raw.toBase64();
 }
 }
 
 AppController::AppController(QObject *parent)
     : QObject(parent)
 {
-    m_authenticatedUser.userId = QStringLiteral("user-0001");
-    m_authenticatedUser.displayName = QStringLiteral("Иван Петров");
-    m_authenticatedUser.devices.append({QStringLiteral("device-01"), demoCertificate(QStringLiteral("device-01"), QStringLiteral("primary")), false});
+    loadServerData();
 
-    User maria;
-    maria.userId = QStringLiteral("user-0002");
-    maria.displayName = QStringLiteral("Мария Сидорова");
-    maria.devices.append({QStringLiteral("device-A1"), demoCertificate(QStringLiteral("device-A1"), QStringLiteral("laptop")), false});
-    maria.devices.append({QStringLiteral("device-A2"), demoCertificate(QStringLiteral("device-A2"), QStringLiteral("mobile")), false});
-
-    User oleg;
-    oleg.userId = QStringLiteral("user-0003");
-    oleg.displayName = QStringLiteral("Олег Ким");
-    oleg.devices.append({QStringLiteral("device-B1"), demoCertificate(QStringLiteral("device-B1"), QStringLiteral("desktop")), false});
-
-    m_directory.append(m_authenticatedUser);
-    m_directory.append(maria);
-    m_directory.append(oleg);
-    ensureDirectoryContainsAuthUser();
-
-    m_currentConversation = QStringLiteral("corp-secure-room");
-    m_conversations.insert(m_currentConversation, {});
+    int totalMessages = 0;
+    for (const QList<Message> &messages : std::as_const(m_conversations)) {
+        totalMessages += messages.size();
+    }
 
     appendLog(QStringLiteral("Auth.WhoAmI -> %1 (%2)")
                   .arg(m_authenticatedUser.userId, m_authenticatedUser.displayName));
     appendLog(QStringLiteral("Directory.ListUsers -> %1 профиля")
                   .arg(m_directory.size()));
+    appendLog(QStringLiteral("Messaging.LoadHistory -> %1 сообщений в %2 каналах")
+                  .arg(totalMessages)
+                  .arg(m_conversations.size()));
     appendLog(QStringLiteral("Messaging.Pull -> подписка на %1")
                   .arg(m_currentConversation));
 
-    addMessage(m_currentConversation,
-               QStringLiteral("Мария Сидорова"),
-               QStringLiteral("Привет! Сервер подтвердил наш общий ключ."),
-               false);
-    addMessage(m_currentConversation,
-               QStringLiteral("Сервер"),
-               QStringLiteral("msg-0001 доставлено подписчикам (%1)").arg(m_currentConversation),
-               false);
+    emit authInfoChanged();
+    emit userListChanged();
+    emit conversationChanged();
+    emit currentConversationChanged();
 }
 
 QVariantMap AppController::authInfo() const
@@ -156,7 +148,8 @@ void AppController::rotateDevice(const QString &userId, const QString &deviceId)
         return;
     }
 
-    device->certificate = demoCertificate(deviceId, QStringLiteral("rotated-%1").arg(QDateTime::currentDateTime().toString(QStringLiteral("hhmmss"))));
+    const QString label = QStringLiteral("rotated-%1").arg(QDateTime::currentDateTime().toString(QStringLiteral("hhmmss")));
+    device->certificate = encodedCertificate(deviceId, label);
     device->revoked = false;
     appendLog(QStringLiteral("Directory.RotateDevice -> %1/%2 обновлён сертификат")
                   .arg(userId, deviceId));
@@ -184,15 +177,42 @@ void AppController::revokeDevice(const QString &userId, const QString &deviceId)
 
 void AppController::refreshUsers()
 {
-    appendLog(QStringLiteral("Directory.ListUsers -> %1 профиля")
-                  .arg(m_directory.size()));
+    const QString identityPath = QDir(resolveDataDirectory()).filePath(QStringLiteral("identity_store.json"));
+    const bool reloaded = loadUserDirectory(identityPath);
+    ensureDirectoryContainsAuthUser();
+    if (reloaded) {
+        appendLog(QStringLiteral("Directory.ListUsers -> обновлено, %1 профиля")
+                      .arg(m_directory.size()));
+    } else {
+        appendLog(QStringLiteral("Directory.ListUsers -> обновление не удалось, используется кэш (%1 профиля)")
+                      .arg(m_directory.size()));
+    }
+    emit authInfoChanged();
     emit userListChanged();
 }
 
 void AppController::simulatePull()
 {
+    QString partnerId;
+    if (m_currentConversation.startsWith(QStringLiteral("dm-"))) {
+        const QStringList parts = m_currentConversation.split(QLatin1Char('-'), Qt::SkipEmptyParts);
+        if (parts.size() >= 3) {
+            const QString userA = parts.value(1);
+            const QString userB = parts.value(2);
+            partnerId = (userA == m_authenticatedUser.userId) ? userB : userA;
+        }
+    }
+    if (partnerId.isEmpty()) {
+        for (const User &user : m_directory) {
+            if (user.userId != m_authenticatedUser.userId) {
+                partnerId = user.userId;
+                break;
+            }
+        }
+    }
+    const QString authorName = displayNameForUserId(partnerId);
     const QString incomingId = addMessage(m_currentConversation,
-                                          QStringLiteral("Мария Сидорова"),
+                                          authorName,
                                           QStringLiteral("Новое сообщение из %1").arg(m_currentConversation),
                                           false);
     appendLog(QStringLiteral("Messaging.Pull -> получено %1 из %2")
@@ -209,9 +229,7 @@ QVariantMap AppController::buildAuthInfo() const
         map.insert(QStringLiteral("deviceId"), device.deviceId);
         map.insert(QStringLiteral("certificate"), device.certificate);
     }
-    QStringList roles;
-    roles << QStringLiteral("admin") << QStringLiteral("user");
-    map.insert(QStringLiteral("roles"), roles);
+    map.insert(QStringLiteral("roles"), m_authenticatedRoles);
     return map;
 }
 
@@ -255,6 +273,244 @@ QVariantList AppController::buildConversation() const
         list.append(entry);
     }
     return list;
+}
+
+void AppController::loadServerData()
+{
+    m_directory.clear();
+    m_conversations.clear();
+    m_authenticatedRoles.clear();
+    m_authenticatedUser = User{};
+
+    const QString dataDir = resolveDataDirectory();
+    const QString identityPath = QDir(dataDir).filePath(QStringLiteral("identity_store.json"));
+    const QString messagesPath = QDir(dataDir).filePath(QStringLiteral("messages.db"));
+
+    const bool usersLoaded = loadUserDirectory(identityPath);
+    ensureDirectoryContainsAuthUser();
+    if (m_authenticatedRoles.isEmpty()) {
+        m_authenticatedRoles << QStringLiteral("user");
+    }
+
+    const bool historyLoaded = loadMessageHistory(messagesPath);
+    if (m_conversations.isEmpty()) {
+        m_conversations.insert(QStringLiteral("corp-secure-room"), {});
+    }
+
+    if (m_currentConversation.trimmed().isEmpty()) {
+        if (m_conversations.contains(QStringLiteral("corp-secure-room"))) {
+            m_currentConversation = QStringLiteral("corp-secure-room");
+        } else if (!m_conversations.isEmpty()) {
+            m_currentConversation = m_conversations.constBegin().key();
+        } else {
+            m_currentConversation = QStringLiteral("corp-secure-room");
+        }
+    }
+
+    if (!usersLoaded) {
+        appendLog(QStringLiteral("Directory.Load -> не удалось прочитать %1, использованы встроенные данные")
+                      .arg(identityPath));
+    }
+    if (!historyLoaded) {
+        appendLog(QStringLiteral("Messaging.LoadHistory -> не удалось прочитать %1, история пуста")
+                      .arg(messagesPath));
+    }
+}
+
+bool AppController::loadUserDirectory(const QString &path)
+{
+    QFile file(path);
+    if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
+        m_directory.clear();
+        m_authenticatedRoles = QStringList{QStringLiteral("user")};
+
+        m_authenticatedUser = User{};
+        m_authenticatedUser.userId = QStringLiteral("user-0001");
+        m_authenticatedUser.displayName = QStringLiteral("Иван Петров");
+        m_authenticatedUser.devices.append({QStringLiteral("device-ivan-laptop"),
+                                            encodedCertificate(QStringLiteral("device-ivan-laptop"), QStringLiteral("primary")),
+                                            false});
+
+        User maria;
+        maria.userId = QStringLiteral("user-0002");
+        maria.displayName = QStringLiteral("Мария Сидорова");
+        maria.devices.append({QStringLiteral("device-maria-laptop"),
+                              encodedCertificate(QStringLiteral("device-maria-laptop"), QStringLiteral("laptop")),
+                              false});
+        maria.devices.append({QStringLiteral("device-maria-mobile"),
+                              encodedCertificate(QStringLiteral("device-maria-mobile"), QStringLiteral("mobile")),
+                              false});
+
+        User oleg;
+        oleg.userId = QStringLiteral("user-0003");
+        oleg.displayName = QStringLiteral("Олег Ким");
+        oleg.devices.append({QStringLiteral("device-oleg-desktop"),
+                             encodedCertificate(QStringLiteral("device-oleg-desktop"), QStringLiteral("desktop")),
+                             false});
+
+        m_directory.append(m_authenticatedUser);
+        m_directory.append(maria);
+        m_directory.append(oleg);
+        return false;
+    }
+
+    QJsonParseError parseError{};
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        return false;
+    }
+    const QJsonArray users = doc.object().value(QStringLiteral("users")).toArray();
+    if (users.isEmpty()) {
+        return false;
+    }
+
+    m_directory.clear();
+    QString preferredUserId = qEnvironmentVariable("SM_AUTH_USER_ID").trimmed();
+    if (preferredUserId.isEmpty()) {
+        preferredUserId = users.first().toObject().value(QStringLiteral("user_id")).toString();
+    }
+
+    for (const QJsonValue &userValue : users) {
+        if (!userValue.isObject()) {
+            continue;
+        }
+        const QJsonObject obj = userValue.toObject();
+        User user;
+        user.userId = obj.value(QStringLiteral("user_id")).toString();
+        user.displayName = obj.value(QStringLiteral("display_name")).toString(user.userId);
+
+        const QJsonObject devicesObj = obj.value(QStringLiteral("devices")).toObject();
+        for (auto it = devicesObj.constBegin(); it != devicesObj.constEnd(); ++it) {
+            const QJsonObject deviceObj = it.value().toObject();
+            Device device;
+            device.deviceId = deviceObj.value(QStringLiteral("device_id")).toString(it.key());
+            device.certificate = deviceObj.value(QStringLiteral("cert_der")).toString();
+            device.revoked = deviceObj.value(QStringLiteral("revoked")).toBool(false);
+            user.devices.append(device);
+        }
+        m_directory.append(user);
+
+        if (user.userId == preferredUserId) {
+            m_authenticatedUser = user;
+            m_authenticatedRoles.clear();
+            const QJsonArray roles = obj.value(QStringLiteral("roles")).toArray();
+            for (const QJsonValue &roleValue : roles) {
+                const QString role = roleValue.toString().trimmed();
+                if (!role.isEmpty()) {
+                    m_authenticatedRoles.append(role);
+                }
+            }
+        }
+    }
+
+    if (m_authenticatedUser.userId.isEmpty()) {
+        m_authenticatedUser = m_directory.first();
+        const QJsonArray roles = users.first().toObject().value(QStringLiteral("roles")).toArray();
+        for (const QJsonValue &roleValue : roles) {
+            const QString role = roleValue.toString().trimmed();
+            if (!role.isEmpty()) {
+                m_authenticatedRoles.append(role);
+            }
+        }
+    }
+
+    return true;
+}
+
+bool AppController::loadMessageHistory(const QString &path)
+{
+    QFile file(path);
+    if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
+        m_nextMessageId = 1;
+        return false;
+    }
+
+    QJsonParseError parseError{};
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        return false;
+    }
+    const QJsonArray messages = doc.object().value(QStringLiteral("messages")).toArray();
+
+    m_conversations.clear();
+    qint64 maxId = 0;
+    for (const QJsonValue &value : messages) {
+        if (!value.isObject()) {
+            continue;
+        }
+        const QJsonObject obj = value.toObject();
+        const qint64 id = static_cast<qint64>(obj.value(QStringLiteral("id")).toDouble());
+        const QString conversationId = obj.value(QStringLiteral("conversation_id")).toString().trimmed();
+        if (conversationId.isEmpty()) {
+            continue;
+        }
+        const QString senderId = obj.value(QStringLiteral("sender_user_id")).toString();
+        const QString ciphertext = obj.value(QStringLiteral("ciphertext_b64")).toString();
+        const QByteArray decoded = QByteArray::fromBase64(ciphertext.toUtf8());
+        const QString text = QString::fromUtf8(decoded.isEmpty() ? ciphertext.toUtf8() : decoded);
+        const qint64 sentUnix = static_cast<qint64>(obj.value(QStringLiteral("sent_unix_sec")).toDouble());
+
+        Message message;
+        message.serverMsgId = QStringLiteral("msg-%1").arg(id, 4, 10, QChar('0'));
+        message.author = displayNameForUserId(senderId);
+        message.text = text;
+        message.outgoing = senderId == m_authenticatedUser.userId;
+        if (sentUnix > 0) {
+            message.timestamp = QDateTime::fromSecsSinceEpoch(sentUnix).toString(QStringLiteral("HH:mm:ss"));
+        } else {
+            message.timestamp = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"));
+        }
+
+        QList<Message> &conversation = m_conversations[conversationId];
+        conversation.append(message);
+        if (id > maxId) {
+            maxId = id;
+        }
+    }
+
+    if (maxId > 0) {
+        m_nextMessageId = maxId + 1;
+    } else {
+        m_nextMessageId = 1;
+    }
+
+    return true;
+}
+
+QString AppController::resolveDataDirectory() const
+{
+    const QString envPath = qEnvironmentVariable("SM_DATA_DIR").trimmed();
+    if (!envPath.isEmpty()) {
+        return QDir(envPath).absolutePath();
+    }
+
+    const QStringList candidates = {QStringLiteral("../data"), QStringLiteral("../../data"), QStringLiteral("data")};
+    QDir base(QCoreApplication::applicationDirPath());
+    for (const QString &candidate : candidates) {
+        QDir probe(base);
+        if (probe.cd(candidate)) {
+            return probe.absolutePath();
+        }
+    }
+
+    QDir current(QDir::currentPath());
+    if (current.cd(QStringLiteral("data"))) {
+        return current.absolutePath();
+    }
+    return QDir::currentPath();
+}
+
+QString AppController::displayNameForUserId(const QString &userId) const
+{
+    if (userId == m_authenticatedUser.userId) {
+        return m_authenticatedUser.displayName;
+    }
+    for (const User &user : m_directory) {
+        if (user.userId == userId) {
+            return user.displayName;
+        }
+    }
+    return userId;
 }
 
 QString AppController::addMessage(const QString &conversationId, const QString &author, const QString &text, bool outgoing)

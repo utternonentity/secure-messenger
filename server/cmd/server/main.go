@@ -22,9 +22,16 @@ func main() {
 	keyPath := flag.String("key", "/etc/sm/certs/server.key", "Path to the server TLS private key")
 	clientCAPath := flag.String("client-ca", "/etc/sm/certs/client_ca.pem", "Path to the client CA bundle")
 	listenAddr := flag.String("listen", ":8443", "Address the server should listen on")
-	storePath := flag.String("store", "sm_messages.db", "Path to the message store file")
-	identityPath := flag.String("identity-store", "sm_identity.db", "Path to the identity store file")
+	storePath := flag.String("store", "data/messages.db", "Path to the message store file")
+	identityPath := flag.String("identity-store", "data/identity_store.json", "Path to the identity store file")
 	flag.Parse()
+
+	if err := identity.EnsureSeedData(*identityPath); err != nil {
+		log.Fatalf("seed identity store: %v", err)
+	}
+	if err := messaging.EnsureSeedData(*storePath); err != nil {
+		log.Fatalf("seed message store: %v", err)
+	}
 
 	identityManager, err := identity.NewManager(*identityPath)
 	if err != nil {

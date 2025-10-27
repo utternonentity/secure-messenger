@@ -63,6 +63,12 @@ private:
     QVariantList buildUserList() const;
     QVariantList buildConversation() const;
 
+    void loadServerData();
+    bool loadUserDirectory(const QString &path);
+    bool loadMessageHistory(const QString &path);
+    QString resolveDataDirectory() const;
+    QString displayNameForUserId(const QString &userId) const;
+
     QString addMessage(const QString &conversationId, const QString &author, const QString &text, bool outgoing);
     void appendLog(const QString &entry);
     void ensureDirectoryContainsAuthUser();
@@ -74,5 +80,6 @@ private:
     QHash<QString, QList<Message>> m_conversations;
     QStringList m_serverLog;
     QString m_currentConversation;
+    QStringList m_authenticatedRoles;
     qint64 m_nextMessageId = 1;
 };

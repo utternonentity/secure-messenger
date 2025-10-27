@@ -1,0 +1,52 @@
+{
+  "messages": [
+    {
+      "id": 1,
+      "conversation_id": "corp-secure-room",
+      "sender_user_id": "user-0002",
+      "sender_device_id": "device-maria-laptop",
+      "sent_unix_sec": 1709484000,
+      "ciphertext_b64": "0J/RgNC40LLQtdGCISDQodC10YDQstC10YAg0L/QvtC00YLQstC10YDQtNC40Lsg0L3QsNGIINC+0LHRidC40Lkg0LrQu9GO0Ycu"
+    },
+    {
+      "id": 2,
+      "conversation_id": "corp-secure-room",
+      "sender_user_id": "user-0001",
+      "sender_device_id": "device-ivan-laptop",
+      "sent_unix_sec": 1709484060,
+      "ciphertext_b64": "0J7RgtC70LjRh9C90YvQtSDQvdC+0LLQvtGB0YLQuCwg0YHQv9Cw0YHQuNCx0L4h"
+    },
+    {
+      "id": 3,
+      "conversation_id": "corp-secure-room",
+      "sender_user_id": "user-0002",
+      "sender_device_id": "device-maria-mobile",
+      "sent_unix_sec": 1709484300,
+      "ciphertext_b64": "0J3QsNC/0L7QvNC90Y4sINGB0L7Qt9Cy0L7QvSDRh9C10YDQtdC3IDE1INC80LjQvdGD0YIu"
+    },
+    {
+      "id": 4,
+      "conversation_id": "corp-secure-room",
+      "sender_user_id": "user-0001",
+      "sender_device_id": "device-ivan-phone",
+      "sent_unix_sec": 1709484360,
+      "ciphertext_b64": "0J/RgNC40L3Rj9GC0L4sINCx0YPQtNGDINC90LAg0YHQstGP0LfQuC4="
+    },
+    {
+      "id": 5,
+      "conversation_id": "dm-user-0001-user-0002",
+      "sender_user_id": "user-0001",
+      "sender_device_id": "device-ivan-laptop",
+      "sent_unix_sec": 1709485200,
+      "ciphertext_b64": "0J3Rg9C20L3QviDQv9GA0L7QstC10YDQuNGC0Ywg0L3QvtCy0YvQtSDQutC70Y7Rh9C4INC00L7RgdGC0YPQv9CwLg=="
+    },
+    {
+      "id": 6,
+      "conversation_id": "dm-user-0001-user-0002",
+      "sender_user_id": "user-0002",
+      "sender_device_id": "device-maria-laptop",
+      "sent_unix_sec": 1709485260,
+      "ciphertext_b64": "0JPQvtGC0L7QstC+LCDQstGB0ZEg0LDQutGC0LjQstC40YDQvtCy0LDQvdC+Lg=="
+    }
+  ]
+}
