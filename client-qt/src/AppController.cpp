@@ -135,7 +135,7 @@ void AppController::startConversationWith(const QString &userId)
 
     if (!alreadyExists) {
         const User *user = findUser(trimmed);
-        const QString partnerName = user ? user->displayName : trimmed;
+        const QString partnerName = user ? user->nickname : trimmed;
         addMessage(directChannel,
                    QStringLiteral("Сервер"),
                    QStringLiteral("Создан защищённый канал с %1").arg(partnerName),
@@ -232,7 +232,7 @@ QVariantMap AppController::buildAuthInfo() const
 {
     QVariantMap map;
     map.insert(QStringLiteral("userId"), m_authenticatedUser.userId);
-    map.insert(QStringLiteral("displayName"), m_authenticatedUser.displayName);
+    map.insert(QStringLiteral("nickname"), m_authenticatedUser.nickname);
     if (!m_authenticatedUser.devices.isEmpty()) {
         const Device &device = m_authenticatedUser.devices.first();
         map.insert(QStringLiteral("deviceId"), device.deviceId);
@@ -248,7 +248,7 @@ QVariantList AppController::buildUserList() const
     for (const User &user : m_directory) {
         QVariantMap entry;
         entry.insert(QStringLiteral("userId"), user.userId);
-        entry.insert(QStringLiteral("displayName"), user.displayName);
+        entry.insert(QStringLiteral("nickname"), user.nickname);
         QVariantList devices;
         for (const Device &device : user.devices) {
             QVariantMap deviceMap;
@@ -306,7 +306,7 @@ void AppController::initializeAfterRegistration()
     }
 
     appendLog(QStringLiteral("Auth.WhoAmI -> %1 (%2)")
-                  .arg(m_authenticatedUser.userId, m_authenticatedUser.displayName));
+                  .arg(m_authenticatedUser.userId, m_authenticatedUser.nickname));
     appendLog(QStringLiteral("Directory.ListUsers -> %1 профиля")
                   .arg(m_directory.size()));
     appendLog(QStringLiteral("Messaging.LoadHistory -> локальный кэш %1 сообщений в %2 каналах")
@@ -333,10 +333,10 @@ void AppController::applyRegisteredNickname()
         return;
     }
 
-    m_authenticatedUser.displayName = trimmed;
+    m_authenticatedUser.nickname = trimmed;
     for (User &user : m_directory) {
         if (user.userId == m_authenticatedUser.userId) {
-            user.displayName = trimmed;
+            user.nickname = trimmed;
             break;
         }
     }
@@ -416,14 +416,14 @@ bool AppController::loadUserDirectory(const QString &path)
 
         m_authenticatedUser = User{};
         m_authenticatedUser.userId = QStringLiteral("user-0001");
-        m_authenticatedUser.displayName = QStringLiteral("Иван Петров");
+        m_authenticatedUser.nickname = QStringLiteral("ironwarden");
         m_authenticatedUser.devices.append({QStringLiteral("device-ivan-laptop"),
                                             encodedCertificate(QStringLiteral("device-ivan-laptop"), QStringLiteral("primary")),
                                             false});
 
         User maria;
         maria.userId = QStringLiteral("user-0002");
-        maria.displayName = QStringLiteral("Мария Сидорова");
+        maria.nickname = QStringLiteral("nova");
         maria.devices.append({QStringLiteral("device-maria-laptop"),
                               encodedCertificate(QStringLiteral("device-maria-laptop"), QStringLiteral("laptop")),
                               false});
@@ -433,7 +433,7 @@ bool AppController::loadUserDirectory(const QString &path)
 
         User oleg;
         oleg.userId = QStringLiteral("user-0003");
-        oleg.displayName = QStringLiteral("Олег Ким");
+        oleg.nickname = QStringLiteral("bytefox");
         oleg.devices.append({QStringLiteral("device-oleg-desktop"),
                              encodedCertificate(QStringLiteral("device-oleg-desktop"), QStringLiteral("desktop")),
                              false});
@@ -467,7 +467,7 @@ bool AppController::loadUserDirectory(const QString &path)
         const QJsonObject obj = userValue.toObject();
         User user;
         user.userId = obj.value(QStringLiteral("user_id")).toString();
-        user.displayName = obj.value(QStringLiteral("display_name")).toString(user.userId);
+        user.nickname = obj.value(QStringLiteral("nickname")).toString(user.userId);
 
         const QJsonObject devicesObj = obj.value(QStringLiteral("devices")).toObject();
         for (auto it = devicesObj.constBegin(); it != devicesObj.constEnd(); ++it) {
@@ -543,7 +543,7 @@ bool AppController::loadMessageHistory(const QString &path)
         Message message;
         const QString serverMsgId = QStringLiteral("msg-%1").arg(id);
         message.serverMsgId = serverMsgId;
-        message.author = displayNameForUserId(senderId);
+        message.author = nicknameForUserId(senderId);
         message.text = text;
         message.outgoing = senderId == m_authenticatedUser.userId;
         if (sentUnix > 0) {
@@ -584,14 +584,14 @@ QString AppController::resolveDataDirectory() const
     return QDir::currentPath();
 }
 
-QString AppController::displayNameForUserId(const QString &userId) const
+QString AppController::nicknameForUserId(const QString &userId) const
 {
     if (userId == m_authenticatedUser.userId) {
-        return m_authenticatedUser.displayName;
+        return m_authenticatedUser.nickname;
     }
     for (const User &user : m_directory) {
         if (user.userId == userId) {
-            return user.displayName;
+            return user.nickname;
         }
     }
     return userId;
@@ -676,7 +676,7 @@ int AppController::handleMessagesResponse(const QJsonDocument &doc)
         const QString text = obj.value(QStringLiteral("text")).toString();
         const qint64 sentUnixSec = static_cast<qint64>(obj.value(QStringLiteral("sent_unix_sec")).toDouble());
 
-        const QString author = displayNameForUserId(senderUserId);
+        const QString author = nicknameForUserId(senderUserId);
         const bool outgoing = senderUserId == m_authenticatedUser.userId;
         addServerMessage(conversationId, serverMsgId, author, text, outgoing, sentUnixSec);
         ++added;
@@ -745,7 +745,7 @@ void AppController::postMessageToServer(const QString &conversationId, const QSt
         const qint64 sentUnixSec = static_cast<qint64>(obj.value(QStringLiteral("sent_unix_sec")).toDouble());
 
         if (!serverMsgId.isEmpty() && !m_knownServerMsgIds.contains(serverMsgId)) {
-            const QString author = displayNameForUserId(senderUserId);
+        const QString author = nicknameForUserId(senderUserId);
             addServerMessage(convId,
                              serverMsgId,
                              author,

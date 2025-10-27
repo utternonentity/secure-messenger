@@ -2,7 +2,7 @@
   "users": [
     {
       "user_id": "user-0001",
-      "display_name": "Иван Петров",
+      "nickname": "ironwarden",
       "roles": [
         "admin",
         "user"
@@ -24,7 +24,7 @@
     },
     {
       "user_id": "user-0002",
-      "display_name": "Мария Сидорова",
+      "nickname": "nova",
       "roles": [
         "user"
       ],
@@ -45,7 +45,7 @@
     },
     {
       "user_id": "user-0003",
-      "display_name": "Олег Ким",
+      "nickname": "bytefox",
       "roles": [
         "user"
       ],

@@ -24,9 +24,9 @@ func EnsureSeedData(path string) error {
 	now := time.Now().UTC().Unix()
 	users := []storedUser{
 		{
-			UserID:      "user-0001",
-			DisplayName: "Иван Петров",
-			Roles:       []string{"admin", "user"},
+			UserID:   "user-0001",
+			Nickname: "ironwarden",
+			Roles:    []string{"admin", "user"},
 			Devices: map[string]storedDevice{
 				"device-ivan-laptop": {
 					DeviceID:    "device-ivan-laptop",
@@ -43,9 +43,9 @@ func EnsureSeedData(path string) error {
 			},
 		},
 		{
-			UserID:      "user-0002",
-			DisplayName: "Мария Сидорова",
-			Roles:       []string{"user"},
+			UserID:   "user-0002",
+			Nickname: "nova",
+			Roles:    []string{"user"},
 			Devices: map[string]storedDevice{
 				"device-maria-laptop": {
 					DeviceID:    "device-maria-laptop",
@@ -62,9 +62,9 @@ func EnsureSeedData(path string) error {
 			},
 		},
 		{
-			UserID:      "user-0003",
-			DisplayName: "Олег Ким",
-			Roles:       []string{"user"},
+			UserID:   "user-0003",
+			Nickname: "bytefox",
+			Roles:    []string{"user"},
 			Devices: map[string]storedDevice{
 				"device-oleg-desktop": {
 					DeviceID:    "device-oleg-desktop",

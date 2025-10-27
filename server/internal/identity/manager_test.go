@@ -93,8 +93,8 @@ func TestRegisterUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RegisterUser: %v", err)
 	}
-	if profile.DisplayName != "Alice" {
-		t.Fatalf("unexpected display name: %q", profile.DisplayName)
+	if profile.Nickname != "Alice" {
+		t.Fatalf("unexpected nickname: %q", profile.Nickname)
 	}
 	if profile.UserID != "user-0001" {
 		t.Fatalf("unexpected user id: %q", profile.UserID)
@@ -104,8 +104,8 @@ func TestRegisterUser(t *testing.T) {
 		t.Fatalf("GetProfile after register: %v", err)
 	}
 
-	if _, err = mgr.RegisterUser(context.Background(), "alice"); !errors.Is(err, ErrDisplayNameTaken) {
-		t.Fatalf("expected ErrDisplayNameTaken, got %v", err)
+	if _, err = mgr.RegisterUser(context.Background(), "alice"); !errors.Is(err, ErrNicknameTaken) {
+		t.Fatalf("expected ErrNicknameTaken, got %v", err)
 	}
 
 	second, err := mgr.RegisterUser(context.Background(), "Bob")
@@ -116,8 +116,8 @@ func TestRegisterUser(t *testing.T) {
 		t.Fatalf("unexpected second user id: %q", second.UserID)
 	}
 
-	if _, err = mgr.RegisterUser(context.Background(), " "); !errors.Is(err, ErrInvalidDisplayName) {
-		t.Fatalf("expected ErrInvalidDisplayName, got %v", err)
+	if _, err = mgr.RegisterUser(context.Background(), " "); !errors.Is(err, ErrInvalidNickname) {
+		t.Fatalf("expected ErrInvalidNickname, got %v", err)
 	}
 }
 

@@ -19,8 +19,8 @@ type registerRequest struct {
 }
 
 type registerResponse struct {
-	UserID      string `json:"user_id"`
-	DisplayName string `json:"display_name"`
+	UserID   string `json:"user_id"`
+	Nickname string `json:"nickname"`
 }
 
 // NewHTTPHandler exposes a minimal endpoint for registering users by nickname.
@@ -59,9 +59,9 @@ func (s *httpServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, http.StatusText(http.StatusRequestTimeout), http.StatusRequestTimeout)
 		case errors.Is(err, context.DeadlineExceeded):
 			http.Error(w, http.StatusText(http.StatusGatewayTimeout), http.StatusGatewayTimeout)
-		case errors.Is(err, identity.ErrInvalidDisplayName):
+		case errors.Is(err, identity.ErrInvalidNickname):
 			http.Error(w, err.Error(), http.StatusBadRequest)
-		case errors.Is(err, identity.ErrDisplayNameTaken):
+		case errors.Is(err, identity.ErrNicknameTaken):
 			http.Error(w, err.Error(), http.StatusConflict)
 		default:
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -70,8 +70,8 @@ func (s *httpServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := registerResponse{
-		UserID:      profile.UserID,
-		DisplayName: profile.DisplayName,
+		UserID:   profile.UserID,
+		Nickname: profile.Nickname,
 	}
 	writeJSON(w, http.StatusCreated, resp)
 }

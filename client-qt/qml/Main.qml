@@ -245,7 +245,7 @@ ApplicationWindow {
 
                             Label {
                                 text: qsTr("%1 (%2)")
-                                          .arg(App && App.authInfo ? App.authInfo.displayName || "" : "")
+                                          .arg(App && App.authInfo ? App.authInfo.nickname || "" : "")
                                           .arg(App && App.authInfo ? App.authInfo.userId || "" : "")
                                 color: "white"
                                 font.pixelSize: 20
@@ -482,7 +482,7 @@ ApplicationWindow {
 
                                                         Label {
                                                             anchors.centerIn: parent
-                                                            text: String(entry.displayName || "?").charAt(0)
+                                                            text: String(entry.nickname || "?").charAt(0)
                                                             font.pixelSize: 18
                                                             font.bold: true
                                                         }
@@ -494,7 +494,7 @@ ApplicationWindow {
 
                                                         Label {
                                                             Layout.fillWidth: true
-                                                            text: String(entry.displayName || "")
+                                                            text: String(entry.nickname || "")
                                                             font.bold: true
                                                             font.pixelSize: 15
                                                         }

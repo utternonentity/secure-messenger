@@ -72,7 +72,7 @@ func convertProfile(profile identity.Profile) *smv1.UserProfile {
 	}
 	return &smv1.UserProfile{
 		UserId:      profile.UserID,
-		DisplayName: profile.DisplayName,
+		DisplayName: profile.Nickname,
 		Devices:     devices,
 	}
 }

@@ -61,7 +61,7 @@ private:
 
     struct User {
         QString userId;
-        QString displayName;
+        QString nickname;
         QList<Device> devices;
     };
 
@@ -98,7 +98,7 @@ private:
                           qint64 sentUnixSec);
 
     QString resolveDataDirectory() const;
-    QString displayNameForUserId(const QString &userId) const;
+    QString nicknameForUserId(const QString &userId) const;
 
     QString addMessage(const QString &conversationId, const QString &author, const QString &text, bool outgoing);
     void appendLog(const QString &entry);

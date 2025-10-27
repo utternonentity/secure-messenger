@@ -19,16 +19,16 @@ var (
 	ErrInvalidCertificate  = errors.New("identity: certificate missing identity attributes")
 	ErrDeviceRevoked       = errors.New("identity: device certificate revoked")
 	ErrCertificateMismatch = errors.New("identity: certificate mismatch for device")
-	ErrDisplayNameTaken    = errors.New("identity: display name already taken")
-	ErrInvalidDisplayName  = errors.New("identity: display name must not be empty")
+	ErrNicknameTaken       = errors.New("identity: nickname already taken")
+	ErrInvalidNickname     = errors.New("identity: nickname must not be empty")
 )
 
 type Identity struct {
-	UserID      string
-	DeviceID    string
-	DisplayName string
-	Roles       []string
-	CertDER     []byte
+	UserID   string
+	DeviceID string
+	Nickname string
+	Roles    []string
+	CertDER  []byte
 }
 
 type Device struct {
@@ -39,17 +39,17 @@ type Device struct {
 }
 
 type Profile struct {
-	UserID      string
-	DisplayName string
-	Roles       []string
-	Devices     []Device
+	UserID   string
+	Nickname string
+	Roles    []string
+	Devices  []Device
 }
 
 type storedUser struct {
-	UserID      string                  `json:"user_id"`
-	DisplayName string                  `json:"display_name"`
-	Roles       []string                `json:"roles"`
-	Devices     map[string]storedDevice `json:"devices"`
+	UserID   string                  `json:"user_id"`
+	Nickname string                  `json:"nickname"`
+	Roles    []string                `json:"roles"`
+	Devices  map[string]storedDevice `json:"devices"`
 }
 
 type storedDevice struct {
@@ -140,17 +140,17 @@ func (m *Manager) ValidateCertificate(cert *x509.Certificate) (Identity, error) 
 	user := m.users[identity.UserID]
 	if user.UserID == "" {
 		user = storedUser{
-			UserID:      identity.UserID,
-			DisplayName: identity.DisplayName,
-			Roles:       []string{"user"},
-			Devices:     make(map[string]storedDevice),
+			UserID:   identity.UserID,
+			Nickname: identity.Nickname,
+			Roles:    []string{"user"},
+			Devices:  make(map[string]storedDevice),
 		}
 	}
 	if len(user.Roles) == 0 {
 		user.Roles = []string{"user"}
 	}
-	if strings.TrimSpace(user.DisplayName) == "" {
-		user.DisplayName = identity.DisplayName
+	if strings.TrimSpace(user.Nickname) == "" {
+		user.Nickname = identity.Nickname
 	}
 	dev := user.Devices[identity.DeviceID]
 	if dev.DeviceID == "" {
@@ -170,7 +170,7 @@ func (m *Manager) ValidateCertificate(cert *x509.Certificate) (Identity, error) 
 		return Identity{}, err
 	}
 
-	identity.DisplayName = user.DisplayName
+	identity.Nickname = user.Nickname
 	identity.Roles = append([]string(nil), user.Roles...)
 	return identity, nil
 }
@@ -202,7 +202,7 @@ func (m *Manager) IdentityFromContext(ctx context.Context) (Identity, error) {
 	if !bytes.Equal(dev.CertDER, base.CertDER) {
 		return Identity{}, ErrCertificateMismatch
 	}
-	base.DisplayName = user.DisplayName
+	base.Nickname = user.Nickname
 	base.Roles = append([]string(nil), user.Roles...)
 	return base, nil
 }
@@ -227,32 +227,32 @@ func (m *Manager) ListProfiles(ctx context.Context) ([]Profile, error) {
 	return profiles, nil
 }
 
-func (m *Manager) RegisterUser(ctx context.Context, displayName string) (Profile, error) {
+func (m *Manager) RegisterUser(ctx context.Context, nickname string) (Profile, error) {
 	if ctx != nil {
 		if err := ctx.Err(); err != nil {
 			return Profile{}, err
 		}
 	}
-	displayName = strings.TrimSpace(displayName)
-	if displayName == "" {
-		return Profile{}, ErrInvalidDisplayName
+	nickname = strings.TrimSpace(nickname)
+	if nickname == "" {
+		return Profile{}, ErrInvalidNickname
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	for _, user := range m.users {
-		if strings.EqualFold(user.DisplayName, displayName) {
-			return Profile{}, ErrDisplayNameTaken
+		if strings.EqualFold(user.Nickname, nickname) {
+			return Profile{}, ErrNicknameTaken
 		}
 	}
 
 	userID := m.nextUserIDLocked()
 	stored := storedUser{
-		UserID:      userID,
-		DisplayName: displayName,
-		Roles:       []string{"user"},
-		Devices:     make(map[string]storedDevice),
+		UserID:   userID,
+		Nickname: nickname,
+		Roles:    []string{"user"},
+		Devices:  make(map[string]storedDevice),
 	}
 	m.users[userID] = stored
 	if err := m.persistLocked(); err != nil {
@@ -349,15 +349,15 @@ func (u storedUser) toProfile() Profile {
 		devices = append(devices, storedDeviceToDevice(dev))
 	}
 	return Profile{
-		UserID:      u.UserID,
-		DisplayName: u.DisplayName,
-		Roles:       append([]string(nil), u.Roles...),
-		Devices:     devices,
+		UserID:   u.UserID,
+		Nickname: u.Nickname,
+		Roles:    append([]string(nil), u.Roles...),
+		Devices:  devices,
 	}
 }
 
 func extractIdentity(cert *x509.Certificate) (Identity, error) {
-	displayName := strings.TrimSpace(cert.Subject.CommonName)
+	nickname := strings.TrimSpace(cert.Subject.CommonName)
 	var userID, deviceID string
 	for _, uri := range cert.URIs {
 		if uri == nil || !strings.EqualFold(uri.Scheme, "sm") {
@@ -373,14 +373,14 @@ func extractIdentity(cert *x509.Certificate) (Identity, error) {
 	if userID == "" || deviceID == "" {
 		return Identity{}, ErrInvalidCertificate
 	}
-	if displayName == "" {
-		displayName = userID
+	if nickname == "" {
+		nickname = userID
 	}
 	return Identity{
-		UserID:      userID,
-		DeviceID:    deviceID,
-		DisplayName: displayName,
-		CertDER:     append([]byte(nil), cert.Raw...),
+		UserID:   userID,
+		DeviceID: deviceID,
+		Nickname: nickname,
+		CertDER:  append([]byte(nil), cert.Raw...),
 	}, nil
 }
 
