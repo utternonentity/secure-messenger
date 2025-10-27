@@ -54,12 +54,17 @@ ApplicationWindow {
                         color: "#cccccc"
                     }
                     TextArea {
+                        id: authCertificate
                         text: App.authInfo.certificate
                         readOnly: true
-                        wrapMode: TextArea.Wrap
+                        wrapMode: TextArea.WrapAnywhere
+                        selectByMouse: true
+                        padding: 8
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 80
+                        Layout.preferredHeight: Math.min(180, authCertificate.contentHeight + 2 * padding)
                         font.family: "monospace"
+                        verticalScrollBarPolicy: Qt.ScrollBarAsNeeded
+                        horizontalScrollBarPolicy: Qt.ScrollBarAlwaysOff
                         background: Rectangle { color: "#1e1e1e"; radius: 4 }
                     }
                 }
@@ -72,7 +77,9 @@ ApplicationWindow {
 
                 GroupBox {
                     title: qsTr("Directory Service")
-                    Layout.preferredWidth: 320
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 320
+                    Layout.preferredWidth: Math.max(360, rootLayout.width * 0.35)
                     Layout.fillHeight: true
 
                     ListView {
@@ -116,12 +123,17 @@ ApplicationWindow {
                                             color: device.revoked ? "#ff8080" : "#80ff80"
                                         }
                                         TextArea {
+                                            id: deviceCertificate
                                             text: device.certificate
                                             readOnly: true
-                                            wrapMode: TextArea.Wrap
+                                            wrapMode: TextArea.WrapAnywhere
+                                            selectByMouse: true
+                                            padding: 6
                                             Layout.fillWidth: true
-                                            Layout.preferredHeight: 60
+                                            Layout.preferredHeight: Math.min(140, deviceCertificate.contentHeight + 2 * padding)
                                             font.family: "monospace"
+                                            verticalScrollBarPolicy: Qt.ScrollBarAsNeeded
+                                            horizontalScrollBarPolicy: Qt.ScrollBarAlwaysOff
                                             background: Rectangle { color: "transparent" }
                                         }
                                         RowLayout {
