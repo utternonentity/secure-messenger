@@ -7,6 +7,8 @@ ApplicationWindow {
     id: window
     width: 1240
     height: 780
+    minimumWidth: 960
+    minimumHeight: 600
     visible: true
     title: qsTr("SM — Secure Messenger Demo")
     color: "#0d1117"
@@ -55,15 +57,40 @@ ApplicationWindow {
         anchors.margins: 20
         spacing: 18
 
-        RowLayout {
+        SplitView {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: 18
+            orientation: Qt.Horizontal
+            handle: Rectangle {
+                implicitWidth: 18
+                color: "transparent"
 
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 2
+                    height: parent.height - 12
+                    radius: 1
+                    color: panelBorder
+                }
+            }
+
+            Item {
+                SplitView.minimumWidth: 320
+                SplitView.preferredWidth: 360
+                SplitView.maximumWidth: 420
+
+<<<<<<< ours
             ColumnLayout {
+                Layout.minimumWidth: 320
                 Layout.preferredWidth: 360
+                Layout.maximumWidth: 420
                 Layout.fillHeight: true
                 spacing: 18
+=======
+                ColumnLayout {
+                    anchors.fill: parent
+                    spacing: 18
+>>>>>>> theirs
 
                 Pane {
                     Layout.fillWidth: true
@@ -211,6 +238,17 @@ ApplicationWindow {
                             }
                         }
 
+                        Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            color: subtleText
+                            visible: App && App.userList && App.userList.length > 0
+                            text: App && App.userList
+                                  ? qsTr("Directory Service вернул %1 профиля (включая ваш аккаунт).")
+                                        .arg(App.userList.length)
+                                  : ""
+                        }
+
                         ListView {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
@@ -222,96 +260,171 @@ ApplicationWindow {
                             delegate: Item {
                                 width: ListView.view.width
                                 property var entry: modelData
+                                readonly property bool isSelf: String(entry.userId || "") === (App && App.authInfo ? String(App.authInfo.userId || "") : "")
                                 implicitHeight: card.implicitHeight + 12
 
                                 Rectangle {
                                     id: card
-                                    anchors.fill: parent
-                                    anchors.margins: 6
-                                    color: "#1b2735"
+                                    anchors {
+                                        top: parent.top
+                                        left: parent.left
+                                        right: parent.right
+                                        margins: 6
+                                    }
                                     radius: 12
+<<<<<<< ours
+                                    color: "#1b2735"
+=======
+                                    color: isSelf ? "#243046" : "#1b2735"
+>>>>>>> theirs
                                     border.color: panelBorder
+                                    implicitHeight: contentColumn.implicitHeight + 24
 
                                     ColumnLayout {
+                                        id: contentColumn
                                         anchors.fill: parent
                                         anchors.margins: 16
-                                        spacing: 10
+                                        spacing: 12
 
                                         ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: 2
 
                                             Label {
+                                                Layout.fillWidth: true
                                                 text: String(entry.displayName || "")
                                                 font.bold: true
                                                 font.pixelSize: 15
                                             }
 
                                             Label {
+                                                Layout.fillWidth: true
                                                 text: qsTr("ID: %1").arg(String(entry.userId || ""))
                                                 color: subtleText
                                                 font.pixelSize: 12
                                             }
                                         }
 
-                                        Repeater {
-                                            model: entry.devices || []
+                                        ColumnLayout {
+                                            id: deviceList
+                                            Layout.fillWidth: true
+                                            spacing: 8
 
-                                            delegate: Rectangle {
-                                                width: parent.width
-                                                radius: 8
-                                                color: (modelData["revoked"] === true) ? "#3f1d29" : "#1f2d3d"
-                                                border.color: panelBorder
-                                                implicitHeight: deviceRow.implicitHeight + 12
+                                            Repeater {
+                                                model: entry.devices || []
 
-                                                RowLayout {
-                                                    id: deviceRow
-                                                    anchors.fill: parent
-                                                    anchors.margins: 12
-                                                    spacing: 10
+                                                delegate: Rectangle {
+                                                    Layout.fillWidth: true
+                                                    radius: 8
+                                                    color: (modelData["revoked"] === true) ? "#3f1d29" : "#1f2d3d"
+                                                    border.color: panelBorder
+                                                    implicitHeight: deviceContent.implicitHeight + 12
 
                                                     ColumnLayout {
-                                                        Layout.fillWidth: true
-                                                        spacing: 4
+                                                        id: deviceContent
+                                                        anchors.fill: parent
+                                                        anchors.margins: 12
+                                                        spacing: 8
 
-                                                        Label {
-                                                            text: qsTr("Устройство %1")
-                                                                      .arg(String(modelData["deviceId"] || ""))
-                                                            font.pixelSize: 13
-                                                            font.bold: true
-                                                        }
+                                                        ColumnLayout {
+                                                            Layout.fillWidth: true
+                                                            spacing: 4
 
-                                                        Label {
-                                                            text: {
-                                                                const cert = String(modelData["certificate"] || "")
-                                                                return cert.length > 36 ? cert.slice(0, 36) + "…" : cert
+                                                            Label {
+                                                                Layout.fillWidth: true
+                                                                text: qsTr("Устройство %1").arg(String(modelData["deviceId"] || ""))
+                                                                font.pixelSize: 13
+                                                                font.bold: true
                                                             }
-                                                            font.family: "monospace"
-                                                            font.pixelSize: 11
-                                                            color: subtleText
+
+                                                            Label {
+                                                                Layout.fillWidth: true
+<<<<<<< ours
+=======
+                                                                text: String(modelData["label"] || "")
+                                                                color: subtleText
+                                                                font.pixelSize: 12
+                                                                visible: text.length > 0
+                                                            }
+
+                                                            Label {
+                                                                Layout.fillWidth: true
+>>>>>>> theirs
+                                                                text: {
+                                                                    const cert = String(modelData["certificate"] || "")
+                                                                    return cert.length > 36 ? cert.slice(0, 36) + "…" : cert
+                                                                }
+                                                                font.family: "monospace"
+                                                                font.pixelSize: 11
+                                                                color: subtleText
+                                                                wrapMode: Text.WrapAnywhere
+                                                            }
+
+                                                            Label {
+                                                                Layout.fillWidth: true
+                                                                text: (modelData["revoked"] === true)
+                                                                      ? qsTr("Статус: отозван")
+                                                                      : qsTr("Статус: активен")
+                                                                color: (modelData["revoked"] === true) ? "#f87171" : "#34d399"
+                                                                font.pixelSize: 12
+                                                            }
                                                         }
 
-                                                        Label {
-                                                            text: (modelData["revoked"] === true)
-                                                                  ? qsTr("Статус: отозван")
-                                                                  : qsTr("Статус: активен")
-                                                            color: (modelData["revoked"] === true) ? "#f87171" : "#34d399"
-                                                            font.pixelSize: 12
+                                                        RowLayout {
+                                                            Layout.fillWidth: true
+                                                            spacing: 8
+
+                                                            Item { Layout.fillWidth: true }
+<<<<<<< ours
+
+                                                            Button {
+                                                                text: qsTr("Rotate cert")
+                                                                enabled: App && App.rotateDevice
+                                                                onClicked: if (App) App.rotateDevice(String(entry.userId || ""), String(modelData["deviceId"] || ""))
+                                                            }
+
+                                                            Button {
+=======
+
+                                                            Button {
+                                                                text: qsTr("Rotate cert")
+                                                                enabled: App && App.rotateDevice
+                                                                onClicked: if (App) App.rotateDevice(String(entry.userId || ""), String(modelData["deviceId"] || ""))
+                                                            }
+
+                                                            Button {
+>>>>>>> theirs
+                                                                text: (modelData["revoked"] === true) ? qsTr("Отозвано") : qsTr("Revoke")
+                                                                enabled: App && App.revokeDevice && !(modelData["revoked"] === true)
+                                                                onClicked: if (App) App.revokeDevice(String(entry.userId || ""), String(modelData["deviceId"] || ""))
+                                                            }
                                                         }
-                                                    }
-
-                                                    Button {
-                                                        text: qsTr("Rotate cert")
-                                                        enabled: App && App.rotateDevice
-                                                        onClicked: if (App) App.rotateDevice(String(entry.userId || ""), String(modelData["deviceId"] || ""))
-                                                    }
-
-                                                    Button {
-                                                        text: (modelData["revoked"] === true) ? qsTr("Отозвано") : qsTr("Revoke")
-                                                        enabled: App && App.revokeDevice && !(modelData["revoked"] === true)
-                                                        onClicked: if (App) App.revokeDevice(String(entry.userId || ""), String(modelData["deviceId"] || ""))
                                                     }
                                                 }
+                                            }
+                                        }
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 8
+                                            readonly property string myId: App && App.authInfo ? String(App.authInfo.userId || "") : ""
+                                            visible: String(entry.userId || "") !== myId
+                                            Layout.preferredHeight: visible ? implicitHeight : 0
+                                            Layout.minimumHeight: 0
+                                            Layout.maximumHeight: visible ? implicitHeight : 0
+
+                                            Label {
+                                                text: qsTr("Личное сообщение")
+                                                color: subtleText
+                                            }
+
+                                            Item { Layout.fillWidth: true }
+
+                                            Button {
+                                                text: qsTr("Написать")
+                                                icon.name: "chat"
+                                                enabled: App && App.startConversationWith
+                                                onClicked: if (App) App.startConversationWith(String(entry.userId || ""))
                                             }
                                         }
                                     }
@@ -322,10 +435,12 @@ ApplicationWindow {
                 }
             }
 
-            ColumnLayout {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                spacing: 18
+            Item {
+                SplitView.fillWidth: true
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    spacing: 18
 
                 Pane {
                     Layout.fillWidth: true

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHash>
 #include <QObject>
 #include <QStringList>
 #include <QVariantList>
@@ -24,6 +25,7 @@ public:
     void setCurrentConversation(const QString &conversationId);
 
     Q_INVOKABLE void send(const QString &text);
+    Q_INVOKABLE void startConversationWith(const QString &userId);
     Q_INVOKABLE void rotateDevice(const QString &userId, const QString &deviceId);
     Q_INVOKABLE void revokeDevice(const QString &userId, const QString &deviceId);
     Q_INVOKABLE void refreshUsers();
@@ -61,7 +63,7 @@ private:
     QVariantList buildUserList() const;
     QVariantList buildConversation() const;
 
-    QString addMessage(const QString &author, const QString &text, bool outgoing);
+    QString addMessage(const QString &conversationId, const QString &author, const QString &text, bool outgoing);
     void appendLog(const QString &entry);
     void ensureDirectoryContainsAuthUser();
     User *findUser(const QString &userId);
@@ -69,7 +71,7 @@ private:
 
     User m_authenticatedUser;
     QList<User> m_directory;
-    QList<Message> m_messages;
+    QHash<QString, QList<Message>> m_conversations;
     QStringList m_serverLog;
     QString m_currentConversation;
     qint64 m_nextMessageId = 1;

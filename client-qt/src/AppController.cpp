@@ -33,6 +33,7 @@ AppController::AppController(QObject *parent)
     ensureDirectoryContainsAuthUser();
 
     m_currentConversation = QStringLiteral("corp-secure-room");
+    m_conversations.insert(m_currentConversation, {});
 
     appendLog(QStringLiteral("Auth.WhoAmI -> %1 (%2)")
                   .arg(m_authenticatedUser.userId, m_authenticatedUser.displayName));
@@ -41,14 +42,14 @@ AppController::AppController(QObject *parent)
     appendLog(QStringLiteral("Messaging.Pull -> подписка на %1")
                   .arg(m_currentConversation));
 
-    addMessage(QStringLiteral("Мария Сидорова"),
+    addMessage(m_currentConversation,
+               QStringLiteral("Мария Сидорова"),
                QStringLiteral("Привет! Сервер подтвердил наш общий ключ."),
                false);
-    addMessage(
-        QStringLiteral("Сервер"),
-        QStringLiteral("msg-0001 доставлено подписчикам (%1)").arg(m_currentConversation),
-    false
-);
+    addMessage(m_currentConversation,
+               QStringLiteral("Сервер"),
+               QStringLiteral("msg-0001 доставлено подписчикам (%1)").arg(m_currentConversation),
+               false);
 }
 
 QVariantMap AppController::authInfo() const
@@ -83,8 +84,12 @@ void AppController::setCurrentConversation(const QString &conversationId)
         return;
     }
     m_currentConversation = trimmed;
+    if (!m_conversations.contains(m_currentConversation)) {
+        m_conversations.insert(m_currentConversation, {});
+    }
     appendLog(QStringLiteral("Messaging.Pull -> подписка обновлена, канал %1").arg(m_currentConversation));
     emit currentConversationChanged();
+    emit conversationChanged();
 }
 
 void AppController::send(const QString &text)
@@ -94,15 +99,54 @@ void AppController::send(const QString &text)
         return;
     }
 
-    const QString serverMsgId = addMessage(m_authenticatedUser.displayName, trimmed, true);
+    if (!m_conversations.contains(m_currentConversation)) {
+        m_conversations.insert(m_currentConversation, {});
+    }
+
+    const QString serverMsgId = addMessage(m_currentConversation, m_authenticatedUser.displayName, trimmed, true);
     appendLog(QStringLiteral("Messaging.Send -> сохранено %1 (conv=%2)")
                   .arg(serverMsgId, m_currentConversation));
     appendLog(QStringLiteral("Messaging.broadcast -> доставлено %1 подписчикам")
                   .arg(serverMsgId));
 
-    addMessage(QStringLiteral("Сервер"),
+    addMessage(m_currentConversation,
+               QStringLiteral("Сервер"),
                QStringLiteral("Доставка %1 подтверждена").arg(serverMsgId),
                false);
+}
+
+void AppController::startConversationWith(const QString &userId)
+{
+    const QString trimmed = userId.trimmed();
+    if (trimmed.isEmpty()) {
+        return;
+    }
+
+    if (trimmed == m_authenticatedUser.userId) {
+        appendLog(QStringLiteral("Messaging.Direct -> попытка открыть чат с самим собой отклонена"));
+        return;
+    }
+
+    const QString directChannel = QStringLiteral("dm-%1-%2").arg(m_authenticatedUser.userId, trimmed);
+    const bool alreadyExists = m_conversations.contains(directChannel);
+
+    setCurrentConversation(directChannel);
+    appendLog(QStringLiteral("Messaging.Direct -> активирован канал %1").arg(directChannel));
+
+    if (!alreadyExists) {
+        const User *user = findUser(trimmed);
+        const QString partnerName = user ? user->displayName : trimmed;
+        addMessage(directChannel,
+                   QStringLiteral("Сервер"),
+                   QStringLiteral("Создан защищённый канал с %1").arg(partnerName),
+                   false);
+        if (user) {
+            addMessage(directChannel,
+                       partnerName,
+                       QStringLiteral("Привет! Готов(а) к общению."),
+                       false);
+        }
+    }
 }
 
 void AppController::rotateDevice(const QString &userId, const QString &deviceId)
@@ -147,7 +191,8 @@ void AppController::refreshUsers()
 
 void AppController::simulatePull()
 {
-    const QString incomingId = addMessage(QStringLiteral("Мария Сидорова"),
+    const QString incomingId = addMessage(m_currentConversation,
+                                          QStringLiteral("Мария Сидорова"),
                                           QStringLiteral("Новое сообщение из %1").arg(m_currentConversation),
                                           false);
     appendLog(QStringLiteral("Messaging.Pull -> получено %1 из %2")
@@ -194,7 +239,13 @@ QVariantList AppController::buildUserList() const
 QVariantList AppController::buildConversation() const
 {
     QVariantList list;
-    for (const Message &message : m_messages) {
+    const auto it = m_conversations.constFind(m_currentConversation);
+    if (it == m_conversations.constEnd()) {
+        return list;
+    }
+
+    const QList<Message> &messages = it.value();
+    for (const Message &message : messages) {
         QVariantMap entry;
         entry.insert(QStringLiteral("serverMsgId"), message.serverMsgId);
         entry.insert(QStringLiteral("author"), message.author);
@@ -206,7 +257,7 @@ QVariantList AppController::buildConversation() const
     return list;
 }
 
-QString AppController::addMessage(const QString &author, const QString &text, bool outgoing)
+QString AppController::addMessage(const QString &conversationId, const QString &author, const QString &text, bool outgoing)
 {
     Message message;
     message.serverMsgId = QStringLiteral("msg-%1").arg(m_nextMessageId++, 4, 10, QChar('0'));
@@ -214,8 +265,11 @@ QString AppController::addMessage(const QString &author, const QString &text, bo
     message.text = text;
     message.outgoing = outgoing;
     message.timestamp = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"));
-    m_messages.append(message);
-    emit conversationChanged();
+    QList<Message> &messages = m_conversations[conversationId];
+    messages.append(message);
+    if (conversationId == m_currentConversation) {
+        emit conversationChanged();
+    }
     return message.serverMsgId;
 }
 
