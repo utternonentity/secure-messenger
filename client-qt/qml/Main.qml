@@ -124,6 +124,7 @@ ApplicationWindow {
                     }
 
                     ColumnLayout {
+                        id: registrationForm
                         anchors.fill: parent
                         spacing: 16
 
@@ -156,7 +157,7 @@ ApplicationWindow {
                             placeholderText: qsTr("Ваш никнейм")
                             selectByMouse: true
                             focus: true
-                            onAccepted: submitRegistration()
+                            onAccepted: registrationForm.submitRegistration()
                             Component.onCompleted: forceActiveFocus()
                         }
 
@@ -169,7 +170,7 @@ ApplicationWindow {
                                 text: qsTr("Зарегистрироваться")
                                 icon.name: "user"
                                 enabled: nicknameField.text.trim().length >= 3
-                                onClicked: submitRegistration()
+                                onClicked: registrationForm.submitRegistration()
                             }
 
                             Label {
