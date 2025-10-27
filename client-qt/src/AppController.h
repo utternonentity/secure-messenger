@@ -1,10 +1,17 @@
 #pragma once
 
 #include <QHash>
+#include <QJsonDocument>
 #include <QObject>
+#include <QSet>
 #include <QStringList>
+#include <QUrl>
+#include <QUrlQuery>
 #include <QVariantList>
 #include <QVariantMap>
+
+class QNetworkAccessManager;
+class QTimer;
 
 class AppController : public QObject {
     Q_OBJECT
@@ -66,6 +73,19 @@ private:
     void loadServerData();
     bool loadUserDirectory(const QString &path);
     bool loadMessageHistory(const QString &path);
+    void fetchHistoryFromServer(const QString &sinceServerMsgId = QString());
+    int handleMessagesResponse(const QJsonDocument &doc);
+    void postMessageToServer(const QString &conversationId, const QString &text);
+    void updateLastServerMsgId(const QString &serverMsgId);
+    qint64 parseServerMsgNumeric(const QString &serverMsgId) const;
+    QUrl buildApiUrl(const QString &path, const QUrlQuery &query = {}) const;
+    void addServerMessage(const QString &conversationId,
+                          const QString &serverMsgId,
+                          const QString &author,
+                          const QString &text,
+                          bool outgoing,
+                          qint64 sentUnixSec);
+
     QString resolveDataDirectory() const;
     QString displayNameForUserId(const QString &userId) const;
 
@@ -82,4 +102,9 @@ private:
     QString m_currentConversation;
     QStringList m_authenticatedRoles;
     qint64 m_nextMessageId = 1;
+    QString m_lastServerMsgId;
+    QSet<QString> m_knownServerMsgIds;
+    QNetworkAccessManager *m_networkManager = nullptr;
+    QTimer *m_pollTimer = nullptr;
+    QString m_apiBaseUrl;
 };

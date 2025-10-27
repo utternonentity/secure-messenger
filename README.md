@@ -113,12 +113,12 @@ powershell -ExecutionPolicy Bypass -File build-scripts/gen_proto.ps1
 cd server
 go build ./cmd/server
 
-# Запуск (путь к сертификатам можно переопределять через переменные окружения)
+# Запуск (пути и адреса можно переопределять флагами/переменными окружения)
 SM_TLS_CERT=../certs/server.pem \
 SM_TLS_KEY=../certs/server.key \
 SM_TLS_CLIENT_CA=../certs/client_ca.pem \
 SM_LISTEN_ADDR=:8443 \
-./server
+./server --http-listen :8080
 ```
 
 ### Переменные окружения сервера
@@ -126,41 +126,63 @@ SM_LISTEN_ADDR=:8443 \
 - `SM_TLS_CERT` — путь к PEM-сертификату сервера (по умолчанию `/etc/sm/certs/server.pem`).
 - `SM_TLS_KEY` — путь к приватному ключу сервера (по умолчанию `/etc/sm/certs/server.key`).
 - `SM_TLS_CLIENT_CA` — набор доверенных клиентских CA (по умолчанию `/etc/sm/certs/client_ca.pem`).
+- HTTP API для истории сообщений и публикации новых записей слушает адрес, переданный флагом `--http-listen` (по умолчанию `:8080`).
 - Пути к файлам хранилищ можно задать флагами `--store` и `--identity-store`, если требуется нестандартный путь.
 
 Идентификационные и журнальные БД (`data/identity_store.json`, `data/messages.db`) создаются автоматически при первом запуске сервера. Их можно переопределить флагами `--identity-store` и `--store`.
 
 ## Подключение клиентов и обмен сообщениями
-1. На каждом устройстве установите Qt 6.5+ и соберите демонстрационный клиент (опционально):
+1. На каждом устройстве установите Qt 6.5+ и соберите демонстрационный клиент:
    ```bash
    cmake -S client-qt -B build/client-qt -GNinja
    cmake --build build/client-qt
+   ```
+2. Убедитесь, что сервер запущен и HTTP API доступен (по умолчанию `https://<host>:8080` при использовании mTLS, либо `http://` при тестовом запуске без прокси).
+3. Настройте клиент на использование нужного HTTP-адреса. По умолчанию используется `http://127.0.0.1:8080`. Чтобы переключиться на удалённый сервер, перед запуском задайте
+   ```bash
+   export SM_HTTP_API="http://10.0.0.5:8080"
+   export SM_AUTH_USER_ID="user-0002"   # (опционально) выбрать пользователя каталога
    ./build/client-qt/sm_client
    ```
-   Текущий QML-клиент читает пользователей и историю сообщений из `data/identity_store.json` и `data/messages.db`, отображая реальные данные сервера. Сетевое взаимодействие можно реализовать, подключив gRPC-слой к `AppController`.
-2. Для реального обмена сообщениями используйте gRPC-клиент с поддержкой mTLS (например, `grpcurl`). Пример команд для двух устройств:
-   - Подписка на канал (открыть на каждом устройстве в отдельной вкладке):
-     ```bash
-     grpcurl -cacert certs/rootCA.pem -cert certs/device-laptop.pem -key certs/device-laptop.key \
-       -d '{"sinceServerMsgId":"","conversationIds":["corp-secure-room"]}' \
-       localhost:8443 sm.v1.Messaging/Pull
-     ```
-   - Отправка сообщения со второго устройства:
-     ```bash
-     grpcurl -cacert certs/rootCA.pem -cert certs/device-phone.pem -key certs/device-phone.key \
-       -d '{
-             "meta": {
-               "conversationId": "corp-secure-room",
-               "senderUserId": "user-ivan",
-               "senderDeviceId": "device-phone",
-               "sentUnixSec": 1700000000
-             },
-             "ciphertext": "dGVtb19lbmNyeXB0ZWRfZGF0YQ=="
-           }' \
-       localhost:8443 sm.v1.Messaging/Send
-     ```
-   Клиент, запущенный в режиме `Pull`, мгновенно получит опубликованный конверт. Поле `ciphertext` передаётся в base64 и должно содержать уже зашифрованную полезную нагрузку.
-3. Повторяйте шаги для дополнительных устройств, меняя сертификаты и идентификаторы в запросах.
+   При старте приложение загружает историю сообщений с сервера, отображает её в UI и каждые несколько секунд запрашивает новые записи. Любое отправленное сообщение сразу уходит на сервер и становится доступным для других клиентов.
+4. Повторите шаги на другом устройстве (или запустите ещё один экземпляр на той же машине), указав другую переменную `SM_AUTH_USER_ID`. Оба клиента будут видеть общий список сообщений из файла `data/messages.db`, который хранится на сервере и автоматически пополняется.
+
+### HTTP API сообщений
+HTTP интерфейс позволяет интегрировать любые дополнительные клиенты. Основные запросы:
+- `GET /api/messages?since_id=msg-5` — возвращает JSON со списком сообщений (опционально только с указанного идентификатора).
+- `POST /api/messages` — принимает JSON вида:
+  ```json
+  {
+    "conversation_id": "corp-secure-room",
+    "sender_user_id": "user-0001",
+    "sender_device_id": "device-ivan-laptop",
+    "text": "Привет!"
+  }
+  ```
+  В ответ сервер возвращает идентификатор сохранённого сообщения и отметку времени.
+
+### Примеры для gRPC (опционально)
+Для глубокой интеграции остаётся доступен исходный gRPC интерфейс. Ниже приведены команды `grpcurl` для тестирования `Pull`/`Send` в обход HTTP API.
+- Подписка на канал:
+  ```bash
+  grpcurl -cacert certs/rootCA.pem -cert certs/device-laptop.pem -key certs/device-laptop.key \
+    -d '{"sinceServerMsgId":"","conversationIds":["corp-secure-room"]}' \
+    localhost:8443 sm.v1.Messaging/Pull
+  ```
+- Отправка сообщения:
+  ```bash
+  grpcurl -cacert certs/rootCA.pem -cert certs/device-phone.pem -key certs/device-phone.key \
+    -d '{
+          "meta": {
+            "conversationId": "corp-secure-room",
+            "senderUserId": "user-ivan",
+            "senderDeviceId": "device-phone",
+            "sentUnixSec": 1700000000
+          },
+          "ciphertext": "dGVtb19lbmNyeXB0ZWRfZGF0YQ=="
+        }' \
+    localhost:8443 sm.v1.Messaging/Send
+  ```
 
 ## Что дальше
 - Реализуйте gRPC-вызовы в Qt-клиенте, используя сгенерированные protobuf-стабы.

@@ -49,7 +49,7 @@ ApplicationWindow {
             Item { Layout.fillWidth: true }
 
             Button {
-                text: qsTr("Имитация pull")
+                text: qsTr("Синхронизировать")
                 icon.name: "refresh"
                 onClicked: if (App && App.simulatePull) App.simulatePull()
             }

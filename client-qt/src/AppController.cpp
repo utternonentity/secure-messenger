@@ -8,6 +8,13 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonParseError>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QTimer>
+#include <QUrl>
+#include <QUrlQuery>
 #include <utility>
 
 namespace {
@@ -21,6 +28,18 @@ QString encodedCertificate(const QString &deviceId, const QString &label)
 AppController::AppController(QObject *parent)
     : QObject(parent)
 {
+    m_networkManager = new QNetworkAccessManager(this);
+    m_pollTimer = new QTimer(this);
+    m_pollTimer->setInterval(3000);
+    connect(m_pollTimer, &QTimer::timeout, this, [this]() {
+        fetchHistoryFromServer(m_lastServerMsgId);
+    });
+
+    m_apiBaseUrl = qEnvironmentVariable("SM_HTTP_API").trimmed();
+    if (m_apiBaseUrl.isEmpty()) {
+        m_apiBaseUrl = QStringLiteral("http://127.0.0.1:8080");
+    }
+
     loadServerData();
 
     int totalMessages = 0;
@@ -32,16 +51,21 @@ AppController::AppController(QObject *parent)
                   .arg(m_authenticatedUser.userId, m_authenticatedUser.displayName));
     appendLog(QStringLiteral("Directory.ListUsers -> %1 профиля")
                   .arg(m_directory.size()));
-    appendLog(QStringLiteral("Messaging.LoadHistory -> %1 сообщений в %2 каналах")
+    appendLog(QStringLiteral("Messaging.LoadHistory -> локальный кэш %1 сообщений в %2 каналах")
                   .arg(totalMessages)
                   .arg(m_conversations.size()));
     appendLog(QStringLiteral("Messaging.Pull -> подписка на %1")
                   .arg(m_currentConversation));
+    appendLog(QStringLiteral("Messaging.HTTP -> базовый URL %1")
+                  .arg(m_apiBaseUrl));
 
     emit authInfoChanged();
     emit userListChanged();
     emit conversationChanged();
     emit currentConversationChanged();
+
+    fetchHistoryFromServer();
+    m_pollTimer->start();
 }
 
 QVariantMap AppController::authInfo() const
@@ -95,16 +119,9 @@ void AppController::send(const QString &text)
         m_conversations.insert(m_currentConversation, {});
     }
 
-    const QString serverMsgId = addMessage(m_currentConversation, m_authenticatedUser.displayName, trimmed, true);
-    appendLog(QStringLiteral("Messaging.Send -> сохранено %1 (conv=%2)")
-                  .arg(serverMsgId, m_currentConversation));
-    appendLog(QStringLiteral("Messaging.broadcast -> доставлено %1 подписчикам")
-                  .arg(serverMsgId));
-
-    addMessage(m_currentConversation,
-               QStringLiteral("Сервер"),
-               QStringLiteral("Доставка %1 подтверждена").arg(serverMsgId),
-               false);
+    appendLog(QStringLiteral("Messaging.Send -> отправка в канал %1")
+                  .arg(m_currentConversation));
+    postMessageToServer(m_currentConversation, trimmed);
 }
 
 void AppController::startConversationWith(const QString &userId)
@@ -193,30 +210,8 @@ void AppController::refreshUsers()
 
 void AppController::simulatePull()
 {
-    QString partnerId;
-    if (m_currentConversation.startsWith(QStringLiteral("dm-"))) {
-        const QStringList parts = m_currentConversation.split(QLatin1Char('-'), Qt::SkipEmptyParts);
-        if (parts.size() >= 3) {
-            const QString userA = parts.value(1);
-            const QString userB = parts.value(2);
-            partnerId = (userA == m_authenticatedUser.userId) ? userB : userA;
-        }
-    }
-    if (partnerId.isEmpty()) {
-        for (const User &user : m_directory) {
-            if (user.userId != m_authenticatedUser.userId) {
-                partnerId = user.userId;
-                break;
-            }
-        }
-    }
-    const QString authorName = displayNameForUserId(partnerId);
-    const QString incomingId = addMessage(m_currentConversation,
-                                          authorName,
-                                          QStringLiteral("Новое сообщение из %1").arg(m_currentConversation),
-                                          false);
-    appendLog(QStringLiteral("Messaging.Pull -> получено %1 из %2")
-                  .arg(incomingId, m_currentConversation));
+    appendLog(QStringLiteral("Messaging.Pull -> ручной запрос обновлений"));
+    fetchHistoryFromServer(m_lastServerMsgId);
 }
 
 QVariantMap AppController::buildAuthInfo() const
@@ -281,6 +276,9 @@ void AppController::loadServerData()
     m_conversations.clear();
     m_authenticatedRoles.clear();
     m_authenticatedUser = User{};
+    m_lastServerMsgId.clear();
+    m_knownServerMsgIds.clear();
+    m_nextMessageId = 1;
 
     const QString dataDir = resolveDataDirectory();
     const QString identityPath = QDir(dataDir).filePath(QStringLiteral("identity_store.json"));
@@ -433,7 +431,7 @@ bool AppController::loadMessageHistory(const QString &path)
     const QJsonArray messages = doc.object().value(QStringLiteral("messages")).toArray();
 
     m_conversations.clear();
-    qint64 maxId = 0;
+    m_nextMessageId = 1;
     for (const QJsonValue &value : messages) {
         if (!value.isObject()) {
             continue;
@@ -451,7 +449,8 @@ bool AppController::loadMessageHistory(const QString &path)
         const qint64 sentUnix = static_cast<qint64>(obj.value(QStringLiteral("sent_unix_sec")).toDouble());
 
         Message message;
-        message.serverMsgId = QStringLiteral("msg-%1").arg(id, 4, 10, QChar('0'));
+        const QString serverMsgId = QStringLiteral("msg-%1").arg(id);
+        message.serverMsgId = serverMsgId;
         message.author = displayNameForUserId(senderId);
         message.text = text;
         message.outgoing = senderId == m_authenticatedUser.userId;
@@ -463,15 +462,8 @@ bool AppController::loadMessageHistory(const QString &path)
 
         QList<Message> &conversation = m_conversations[conversationId];
         conversation.append(message);
-        if (id > maxId) {
-            maxId = id;
-        }
-    }
-
-    if (maxId > 0) {
-        m_nextMessageId = maxId + 1;
-    } else {
-        m_nextMessageId = 1;
+        m_knownServerMsgIds.insert(serverMsgId);
+        updateLastServerMsgId(serverMsgId);
     }
 
     return true;
@@ -513,10 +505,238 @@ QString AppController::displayNameForUserId(const QString &userId) const
     return userId;
 }
 
+void AppController::fetchHistoryFromServer(const QString &sinceServerMsgId)
+{
+    if (!m_networkManager) {
+        appendLog(QStringLiteral("Messaging.HTTP -> сетевой менеджер не инициализирован"));
+        return;
+    }
+
+    QUrlQuery query;
+    const QString marker = sinceServerMsgId.trimmed();
+    if (!marker.isEmpty()) {
+        query.addQueryItem(QStringLiteral("since_id"), marker);
+    }
+
+    const QUrl url = buildApiUrl(QStringLiteral("/api/messages"), query);
+    if (!url.isValid()) {
+        appendLog(QStringLiteral("Messaging.HTTP -> некорректный адрес API (%1)").arg(m_apiBaseUrl));
+        return;
+    }
+
+    QNetworkRequest request(url);
+    auto *reply = m_networkManager->get(request);
+    const bool initialLoad = marker.isEmpty();
+    connect(reply, &QNetworkReply::finished, this, [this, reply, initialLoad]() {
+        const QNetworkReply::NetworkError error = reply->error();
+        const QString errorText = reply->errorString();
+        const QByteArray payload = reply->readAll();
+        reply->deleteLater();
+
+        if (error != QNetworkReply::NoError) {
+            appendLog(QStringLiteral("Messaging.HTTP -> ошибка получения истории: %1")
+                          .arg(errorText));
+            return;
+        }
+
+        QJsonParseError parseError{};
+        const QJsonDocument doc = QJsonDocument::fromJson(payload, &parseError);
+        if (parseError.error != QJsonParseError::NoError) {
+            appendLog(QStringLiteral("Messaging.HTTP -> некорректный JSON: %1")
+                          .arg(parseError.errorString()));
+            return;
+        }
+
+        const int added = handleMessagesResponse(doc);
+        if (initialLoad) {
+            appendLog(QStringLiteral("Messaging.Sync -> сервер вернул %1 сообщений")
+                          .arg(added));
+        } else if (added > 0) {
+            appendLog(QStringLiteral("Messaging.Pull -> получено %1 новых сообщений")
+                          .arg(added));
+        }
+    });
+}
+
+int AppController::handleMessagesResponse(const QJsonDocument &doc)
+{
+    if (!doc.isObject()) {
+        return 0;
+    }
+
+    const QJsonObject root = doc.object();
+    const QJsonArray messages = root.value(QStringLiteral("messages")).toArray();
+    int added = 0;
+    for (const QJsonValue &value : messages) {
+        if (!value.isObject()) {
+            continue;
+        }
+        const QJsonObject obj = value.toObject();
+        const QString serverMsgId = obj.value(QStringLiteral("server_msg_id")).toString().trimmed();
+        if (serverMsgId.isEmpty() || m_knownServerMsgIds.contains(serverMsgId)) {
+            continue;
+        }
+        const QString conversationId = obj.value(QStringLiteral("conversation_id")).toString().trimmed();
+        if (conversationId.isEmpty()) {
+            continue;
+        }
+        const QString senderUserId = obj.value(QStringLiteral("sender_user_id")).toString();
+        const QString text = obj.value(QStringLiteral("text")).toString();
+        const qint64 sentUnixSec = static_cast<qint64>(obj.value(QStringLiteral("sent_unix_sec")).toDouble());
+
+        const QString author = displayNameForUserId(senderUserId);
+        const bool outgoing = senderUserId == m_authenticatedUser.userId;
+        addServerMessage(conversationId, serverMsgId, author, text, outgoing, sentUnixSec);
+        ++added;
+    }
+
+    const QString lastId = root.value(QStringLiteral("last_server_msg_id")).toString().trimmed();
+    if (!lastId.isEmpty()) {
+        updateLastServerMsgId(lastId);
+    }
+
+    return added;
+}
+
+void AppController::postMessageToServer(const QString &conversationId, const QString &text)
+{
+    if (!m_networkManager) {
+        appendLog(QStringLiteral("Messaging.Send -> сетевой менеджер не инициализирован"));
+        return;
+    }
+
+    QJsonObject payload;
+    payload.insert(QStringLiteral("conversation_id"), conversationId);
+    payload.insert(QStringLiteral("sender_user_id"), m_authenticatedUser.userId);
+    if (!m_authenticatedUser.devices.isEmpty()) {
+        payload.insert(QStringLiteral("sender_device_id"), m_authenticatedUser.devices.first().deviceId);
+    }
+    payload.insert(QStringLiteral("text"), text);
+
+    const QUrl url = buildApiUrl(QStringLiteral("/api/messages"));
+    if (!url.isValid()) {
+        appendLog(QStringLiteral("Messaging.Send -> некорректный адрес API (%1)").arg(m_apiBaseUrl));
+        return;
+    }
+
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    auto *reply = m_networkManager->post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, conversationId, text]() {
+        const QNetworkReply::NetworkError error = reply->error();
+        const QString errorText = reply->errorString();
+        const QByteArray payload = reply->readAll();
+        reply->deleteLater();
+
+        if (error != QNetworkReply::NoError) {
+            appendLog(QStringLiteral("Messaging.Send -> ошибка публикации: %1")
+                          .arg(errorText));
+            return;
+        }
+
+        QJsonParseError parseError{};
+        const QJsonDocument doc = QJsonDocument::fromJson(payload, &parseError);
+        if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+            appendLog(QStringLiteral("Messaging.Send -> некорректный ответ сервера"));
+            return;
+        }
+
+        const QJsonObject obj = doc.object();
+        const QString serverMsgId = obj.value(QStringLiteral("server_msg_id")).toString().trimmed();
+        QString convId = obj.value(QStringLiteral("conversation_id")).toString().trimmed();
+        if (convId.isEmpty()) {
+            convId = conversationId;
+        }
+        const QString senderUserId = obj.value(QStringLiteral("sender_user_id")).toString(m_authenticatedUser.userId);
+        const QString deliveredText = obj.value(QStringLiteral("text")).toString(text);
+        const qint64 sentUnixSec = static_cast<qint64>(obj.value(QStringLiteral("sent_unix_sec")).toDouble());
+
+        if (!serverMsgId.isEmpty() && !m_knownServerMsgIds.contains(serverMsgId)) {
+            const QString author = displayNameForUserId(senderUserId);
+            addServerMessage(convId,
+                             serverMsgId,
+                             author,
+                             deliveredText,
+                             senderUserId == m_authenticatedUser.userId,
+                             sentUnixSec);
+            appendLog(QStringLiteral("Messaging.Send -> доставлено %1 (conv=%2)")
+                          .arg(serverMsgId, convId));
+        }
+    });
+}
+
+void AppController::updateLastServerMsgId(const QString &serverMsgId)
+{
+    const qint64 numeric = parseServerMsgNumeric(serverMsgId);
+    const qint64 current = parseServerMsgNumeric(m_lastServerMsgId);
+    if (numeric > current) {
+        m_lastServerMsgId = serverMsgId;
+    }
+}
+
+qint64 AppController::parseServerMsgNumeric(const QString &serverMsgId) const
+{
+    if (!serverMsgId.startsWith(QStringLiteral("msg-"))) {
+        return 0;
+    }
+    bool ok = false;
+    const qint64 value = serverMsgId.mid(4).toLongLong(&ok);
+    if (!ok) {
+        return 0;
+    }
+    return value;
+}
+
+QUrl AppController::buildApiUrl(const QString &path, const QUrlQuery &query) const
+{
+    QUrl base(m_apiBaseUrl);
+    if (!base.isValid()) {
+        return {};
+    }
+    QUrl endpoint = base.resolved(QUrl(path));
+    if (!query.isEmpty()) {
+        endpoint.setQuery(query);
+    }
+    return endpoint;
+}
+
+void AppController::addServerMessage(const QString &conversationId,
+                                      const QString &serverMsgId,
+                                      const QString &author,
+                                      const QString &text,
+                                      bool outgoing,
+                                      qint64 sentUnixSec)
+{
+    if (conversationId.trimmed().isEmpty() || serverMsgId.trimmed().isEmpty()) {
+        return;
+    }
+
+    Message message;
+    message.serverMsgId = serverMsgId;
+    message.author = author;
+    message.text = text;
+    message.outgoing = outgoing;
+    if (sentUnixSec > 0) {
+        message.timestamp = QDateTime::fromSecsSinceEpoch(sentUnixSec).toString(QStringLiteral("HH:mm:ss"));
+    } else {
+        message.timestamp = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"));
+    }
+
+    QList<Message> &messages = m_conversations[conversationId];
+    messages.append(message);
+    m_knownServerMsgIds.insert(serverMsgId);
+    updateLastServerMsgId(serverMsgId);
+
+    if (conversationId == m_currentConversation) {
+        emit conversationChanged();
+    }
+}
+
 QString AppController::addMessage(const QString &conversationId, const QString &author, const QString &text, bool outgoing)
 {
     Message message;
-    message.serverMsgId = QStringLiteral("msg-%1").arg(m_nextMessageId++, 4, 10, QChar('0'));
+    message.serverMsgId = QStringLiteral("local-%1").arg(m_nextMessageId++);
     message.author = author;
     message.text = text;
     message.outgoing = outgoing;

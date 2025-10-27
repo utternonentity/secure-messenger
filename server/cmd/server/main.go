@@ -2,9 +2,11 @@ package main
 
 import (
 	"crypto/x509"
+	"errors"
 	"flag"
 	"log"
 	"net"
+	"net/http"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -24,6 +26,7 @@ func main() {
 	listenAddr := flag.String("listen", ":8443", "Address the server should listen on")
 	storePath := flag.String("store", "data/messages.db", "Path to the message store file")
 	identityPath := flag.String("identity-store", "data/identity_store.json", "Path to the identity store file")
+	httpListenAddr := flag.String("http-listen", ":8080", "Address the HTTP API should listen on")
 	flag.Parse()
 
 	if err := identity.EnsureSeedData(*identityPath); err != nil {
@@ -74,6 +77,11 @@ func main() {
 		log.Fatalf("init messaging service: %v", err)
 	}
 
+	httpHandler, err := messaging.NewHTTPHandler(messagingService)
+	if err != nil {
+		log.Fatalf("init messaging http handler: %v", err)
+	}
+
 	authService, err := auth.NewService(identityManager)
 	if err != nil {
 		log.Fatalf("init auth service: %v", err)
@@ -86,6 +94,14 @@ func main() {
 	smv1.RegisterAuthServer(srv, authService)
 	smv1.RegisterDirectoryServer(srv, directoryService)
 	smv1.RegisterMessagingServer(srv, messagingService)
+
+	go func() {
+		httpSrv := &http.Server{Addr: *httpListenAddr, Handler: httpHandler}
+		log.Printf("secure-messenger HTTP API listening on %s", httpSrv.Addr)
+		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("http serve: %v", err)
+		}
+	}()
 
 	log.Printf("secure-messenger server listening on %s", lis.Addr())
 	if err := srv.Serve(lis); err != nil {
