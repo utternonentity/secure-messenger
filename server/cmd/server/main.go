@@ -77,11 +77,6 @@ func main() {
 		log.Fatalf("init messaging service: %v", err)
 	}
 
-	httpHandler, err := messaging.NewHTTPHandler(messagingService)
-	if err != nil {
-		log.Fatalf("init messaging http handler: %v", err)
-	}
-
 	authService, err := auth.NewService(identityManager)
 	if err != nil {
 		log.Fatalf("init auth service: %v", err)
@@ -95,8 +90,20 @@ func main() {
 	smv1.RegisterDirectoryServer(srv, directoryService)
 	smv1.RegisterMessagingServer(srv, messagingService)
 
+	httpMessagesHandler, err := messaging.NewHTTPHandler(messagingService)
+	if err != nil {
+		log.Fatalf("init messaging http handler: %v", err)
+	}
+	httpAuthHandler, err := auth.NewHTTPHandler(identityManager)
+	if err != nil {
+		log.Fatalf("init auth http handler: %v", err)
+	}
+	httpMux := http.NewServeMux()
+	httpMux.Handle("/api/auth/", httpAuthHandler)
+	httpMux.Handle("/", httpMessagesHandler)
+
 	go func() {
-		httpSrv := &http.Server{Addr: *httpListenAddr, Handler: httpHandler}
+		httpSrv := &http.Server{Addr: *httpListenAddr, Handler: httpMux}
 		log.Printf("secure-messenger HTTP API listening on %s", httpSrv.Addr)
 		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("http serve: %v", err)

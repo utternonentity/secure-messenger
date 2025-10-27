@@ -30,7 +30,7 @@
 server/bin/
 coverage.out
 *.db
-
+*.json
 # Misc
 *.cache
 *.pdb

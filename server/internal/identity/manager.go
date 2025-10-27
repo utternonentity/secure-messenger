@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,8 @@ var (
 	ErrInvalidCertificate  = errors.New("identity: certificate missing identity attributes")
 	ErrDeviceRevoked       = errors.New("identity: device certificate revoked")
 	ErrCertificateMismatch = errors.New("identity: certificate mismatch for device")
+	ErrDisplayNameTaken    = errors.New("identity: display name already taken")
+	ErrInvalidDisplayName  = errors.New("identity: display name must not be empty")
 )
 
 type Identity struct {
@@ -222,6 +225,65 @@ func (m *Manager) ListProfiles(ctx context.Context) ([]Profile, error) {
 		profiles = append(profiles, user.toProfile())
 	}
 	return profiles, nil
+}
+
+func (m *Manager) RegisterUser(ctx context.Context, displayName string) (Profile, error) {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return Profile{}, err
+		}
+	}
+	displayName = strings.TrimSpace(displayName)
+	if displayName == "" {
+		return Profile{}, ErrInvalidDisplayName
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, user := range m.users {
+		if strings.EqualFold(user.DisplayName, displayName) {
+			return Profile{}, ErrDisplayNameTaken
+		}
+	}
+
+	userID := m.nextUserIDLocked()
+	stored := storedUser{
+		UserID:      userID,
+		DisplayName: displayName,
+		Roles:       []string{"user"},
+		Devices:     make(map[string]storedDevice),
+	}
+	m.users[userID] = stored
+	if err := m.persistLocked(); err != nil {
+		delete(m.users, userID)
+		return Profile{}, err
+	}
+	return stored.toProfile(), nil
+}
+
+func (m *Manager) nextUserIDLocked() string {
+	const prefix = "user-"
+	maxNumeric := 0
+	for id := range m.users {
+		if !strings.HasPrefix(id, prefix) {
+			continue
+		}
+		n, err := strconv.Atoi(strings.TrimPrefix(id, prefix))
+		if err != nil {
+			continue
+		}
+		if n > maxNumeric {
+			maxNumeric = n
+		}
+	}
+	for {
+		maxNumeric++
+		candidate := fmt.Sprintf("%s%04d", prefix, maxNumeric)
+		if _, exists := m.users[candidate]; !exists {
+			return candidate
+		}
+	}
 }
 
 func (m *Manager) RotateDeviceCertificate(ctx context.Context, userID, deviceID string, certDER []byte) (Device, error) {

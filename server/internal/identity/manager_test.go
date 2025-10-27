@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"errors"
 	"math/big"
 	"net/url"
 	"testing"
@@ -82,6 +83,41 @@ func TestRotateDeviceCertificate(t *testing.T) {
 
 	if _, err := mgr.ValidateCertificate(cert2); err != nil {
 		t.Fatalf("ValidateCertificate(after rotation): %v", err)
+	}
+}
+
+func TestRegisterUser(t *testing.T) {
+	mgr := newTestManager(t)
+
+	profile, err := mgr.RegisterUser(context.Background(), "Alice")
+	if err != nil {
+		t.Fatalf("RegisterUser: %v", err)
+	}
+	if profile.DisplayName != "Alice" {
+		t.Fatalf("unexpected display name: %q", profile.DisplayName)
+	}
+	if profile.UserID != "user-0001" {
+		t.Fatalf("unexpected user id: %q", profile.UserID)
+	}
+
+	if _, err := mgr.GetProfile(context.Background(), profile.UserID); err != nil {
+		t.Fatalf("GetProfile after register: %v", err)
+	}
+
+	if _, err = mgr.RegisterUser(context.Background(), "alice"); !errors.Is(err, ErrDisplayNameTaken) {
+		t.Fatalf("expected ErrDisplayNameTaken, got %v", err)
+	}
+
+	second, err := mgr.RegisterUser(context.Background(), "Bob")
+	if err != nil {
+		t.Fatalf("RegisterUser second: %v", err)
+	}
+	if second.UserID != "user-0002" {
+		t.Fatalf("unexpected second user id: %q", second.UserID)
+	}
+
+	if _, err = mgr.RegisterUser(context.Background(), " "); !errors.Is(err, ErrInvalidDisplayName) {
+		t.Fatalf("expected ErrInvalidDisplayName, got %v", err)
 	}
 }
 
