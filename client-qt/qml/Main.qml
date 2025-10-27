@@ -237,10 +237,23 @@ ApplicationWindow {
                             anchors.fill: parent
                             spacing: 12
 
-                            Label {
-                                text: qsTr("Идентификация")
-                                font.bold: true
-                                font.pixelSize: 16
+                            RowLayout {
+                                Layout.fillWidth: true
+
+                                Label {
+                                    text: qsTr("Идентификация")
+                                    font.bold: true
+                                    font.pixelSize: 16
+                                }
+
+                                Item { Layout.fillWidth: true }
+
+                                Button {
+                                    text: qsTr("Сменить пользователя")
+                                    visible: App && App.registered
+                                    icon.name: "logout"
+                                    onClicked: if (App && App.resetRegistration) App.resetRegistration()
+                                }
                             }
 
                             Label {
@@ -312,6 +325,7 @@ ApplicationWindow {
 
                     Pane {
                         Layout.fillWidth: true
+                        Layout.fillHeight: true
                         padding: 16
                         background: Rectangle {
                             color: panelColor
@@ -323,47 +337,115 @@ ApplicationWindow {
                             anchors.fill: parent
                             spacing: 12
 
-                            Label {
-                                text: qsTr("Серверные возможности")
-                                font.bold: true
-                                font.pixelSize: 16
-                            }
-
-                            Label {
+                            RowLayout {
                                 Layout.fillWidth: true
-                                wrapMode: Text.WordWrap
-                                text: qsTr("Сервисы доступны через единый защищённый сервер: каталог пользователей, обмен сообщениями, аудит, управление устройствами.")
-                                color: subtleText
+
+                                Label {
+                                    text: qsTr("Диалоги")
+                                    font.bold: true
+                                    font.pixelSize: 16
+                                }
+
+                                Item { Layout.fillWidth: true }
+
+                                Label {
+                                    text: qsTr("%1 чатов").arg(App && App.conversationList ? App.conversationList.length : 0)
+                                    color: subtleText
+                                }
                             }
 
-                            Flow {
-                                width: parent.width
-                                spacing: 8
+                            Item {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
 
-                                Repeater {
-                                    model: [
-                                        qsTr("mTLS аутентификация"),
-                                        qsTr("Directory Service"),
-                                        qsTr("Messaging Service"),
-                                        qsTr("Аудит действий"),
-                                        qsTr("Ротация сертификатов"),
-                                        qsTr("Отзыв устройств")
-                                    ]
+                                ListView {
+                                    id: conversationsView
+                                    anchors.fill: parent
+                                    clip: true
+                                    spacing: 8
+                                    model: (App && App.conversationList) ? App.conversationList : []
+                                    boundsBehavior: Flickable.StopAtBounds
+                                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
                                     delegate: Rectangle {
-                                        radius: 14
-                                        color: "#1f2937"
-                                        border.color: panelBorder
-                                        implicitWidth: badgeLabel.implicitWidth + 24
-                                        implicitHeight: badgeLabel.implicitHeight + 12
+                                        width: conversationsView.width
+                                        property var entry: modelData
+                                        property string conversationId: String(entry["id"] || "")
+                                        property bool active: App && App.currentConversation === conversationId
+                                        radius: 12
+                                        border.width: active ? 2 : 1
+                                        border.color: active ? Material.accent : panelBorder
+                                        color: active ? "#1f2937" : "transparent"
+                                        implicitHeight: contentColumn.implicitHeight + 16
 
-                                        Label {
-                                            id: badgeLabel
-                                            anchors.centerIn: parent
-                                            text: modelData
-                                            color: "#d1d5db"
-                                            font.pixelSize: 12
+                                        ColumnLayout {
+                                            id: contentColumn
+                                            anchors.fill: parent
+                                            anchors.margins: 12
+                                            spacing: 4
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+
+                                                Label {
+                                                    Layout.fillWidth: true
+                                                    text: String(entry["title"] || conversationId)
+                                                    font.bold: true
+                                                    font.pixelSize: 15
+                                                    elide: Text.ElideRight
+                                                }
+
+                                                Label {
+                                                    text: String(entry["lastTimestamp"] || "")
+                                                    color: subtleText
+                                                    font.pixelSize: 12
+                                                }
+                                            }
+
+                                            Label {
+                                                Layout.fillWidth: true
+                                                visible: String(entry["subtitle"] || "").length > 0
+                                                text: String(entry["subtitle"] || "")
+                                                color: subtleText
+                                                font.pixelSize: 11
+                                                elide: Text.ElideRight
+                                            }
+
+                                            Label {
+                                                Layout.fillWidth: true
+                                                text: String(entry["lastMessage"] || "")
+                                                color: "#e5e7eb"
+                                                font.pixelSize: 12
+                                                wrapMode: Text.WordWrap
+                                                maximumLineCount: 2
+                                                elide: Text.ElideRight
+                                            }
                                         }
+
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            onClicked: if (App) App.currentConversation = conversationId
+                                        }
+                                    }
+                                }
+
+                                ColumnLayout {
+                                    anchors.centerIn: parent
+                                    visible: conversationsView.count === 0
+                                    spacing: 8
+
+                                    Label {
+                                        text: qsTr("Диалоги не найдены")
+                                        font.pixelSize: 16
+                                        font.bold: true
+                                    }
+
+                                    Label {
+                                        text: qsTr("Начните разговор или выберите пользователя, чтобы создать чат.")
+                                        color: subtleText
+                                        wrapMode: Text.WordWrap
+                                        horizontalAlignment: Text.AlignHCenter
+                                        Layout.preferredWidth: 220
                                     }
                                 }
                             }
@@ -794,6 +876,66 @@ ApplicationWindow {
                                             return
                                         App.send(input.text)
                                         input.text = ""
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Pane {
+                        Layout.fillWidth: true
+                        padding: 16
+                        background: Rectangle {
+                            color: panelColor
+                            radius: 12
+                            border.color: panelBorder
+                        }
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            spacing: 12
+
+                            Label {
+                                text: qsTr("Серверные возможности")
+                                font.bold: true
+                                font.pixelSize: 16
+                            }
+
+                            Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                text: qsTr("Сервисы доступны через единый защищённый сервер: каталог пользователей, обмен сообщениями, аудит, управление устройствами.")
+                                color: subtleText
+                            }
+
+                            Flow {
+                                width: parent.width
+                                spacing: 8
+
+                                Repeater {
+                                    model: [
+                                        qsTr("mTLS аутентификация"),
+                                        qsTr("Directory Service"),
+                                        qsTr("Messaging Service"),
+                                        qsTr("Аудит действий"),
+                                        qsTr("Ротация сертификатов"),
+                                        qsTr("Отзыв устройств")
+                                    ]
+
+                                    delegate: Rectangle {
+                                        radius: 14
+                                        color: "#1f2937"
+                                        border.color: panelBorder
+                                        implicitWidth: badgeLabel.implicitWidth + 24
+                                        implicitHeight: badgeLabel.implicitHeight + 12
+
+                                        Label {
+                                            id: badgeLabel
+                                            anchors.centerIn: parent
+                                            text: modelData
+                                            color: "#d1d5db"
+                                            font.pixelSize: 12
+                                        }
                                     }
                                 }
                             }

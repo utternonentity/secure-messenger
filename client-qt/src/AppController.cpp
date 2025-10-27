@@ -17,6 +17,7 @@
 #include <QTimer>
 #include <QUrl>
 #include <QUrlQuery>
+#include <algorithm>
 #include <utility>
 
 namespace {
@@ -65,6 +66,11 @@ QVariantList AppController::conversation() const
     return buildConversation();
 }
 
+QVariantList AppController::conversationList() const
+{
+    return buildConversationList();
+}
+
 QStringList AppController::serverLog() const
 {
     return m_serverLog;
@@ -78,13 +84,20 @@ QString AppController::currentConversation() const
 void AppController::setCurrentConversation(const QString &conversationId)
 {
     const QString trimmed = conversationId.trimmed();
-    if (trimmed.isEmpty() || trimmed == m_currentConversation) {
+    if (trimmed.isEmpty()) {
         return;
     }
-    m_currentConversation = trimmed;
-    if (!m_conversations.contains(m_currentConversation)) {
-        m_conversations.insert(m_currentConversation, {});
+    if (!m_conversations.contains(trimmed)) {
+        m_conversations.insert(trimmed, {});
     }
+    promoteConversation(trimmed);
+    emit conversationListChanged();
+
+    if (trimmed == m_currentConversation) {
+        return;
+    }
+
+    m_currentConversation = trimmed;
     appendLog(QStringLiteral("Messaging.Pull -> подписка обновлена, канал %1").arg(m_currentConversation));
     emit currentConversationChanged();
     emit conversationChanged();
@@ -110,6 +123,8 @@ void AppController::send(const QString &text)
     if (!m_conversations.contains(m_currentConversation)) {
         m_conversations.insert(m_currentConversation, {});
     }
+    promoteConversation(m_currentConversation);
+    emit conversationListChanged();
 
     appendLog(QStringLiteral("Messaging.Send -> отправка в канал %1")
                   .arg(m_currentConversation));
@@ -297,6 +312,47 @@ void AppController::completeRegistration(const QString &nickname)
     });
 }
 
+void AppController::resetRegistration()
+{
+    if (m_registrationInFlight) {
+        appendLog(QStringLiteral("Registration -> дождитесь завершения регистрации"));
+        return;
+    }
+
+    QSettings settings;
+    settings.remove(QStringLiteral("registration"));
+    settings.sync();
+
+    if (m_pollTimer) {
+        m_pollTimer->stop();
+    }
+
+    m_registrationInFlight = false;
+    m_isRegistered = false;
+    m_registeredNickname.clear();
+    m_registeredUserId.clear();
+    m_initialized = false;
+    m_authenticatedUser = User{};
+    m_authenticatedRoles.clear();
+    m_directory.clear();
+    m_conversations.clear();
+    m_conversationOrder.clear();
+    m_currentConversation.clear();
+    m_serverLog.clear();
+    m_knownServerMsgIds.clear();
+    m_lastServerMsgId.clear();
+    m_nextMessageId = 1;
+
+    appendLog(QStringLiteral("Registration -> профиль сброшен, повторите регистрацию"));
+
+    emit authInfoChanged();
+    emit userListChanged();
+    emit conversationChanged();
+    emit conversationListChanged();
+    emit currentConversationChanged();
+    emit registrationChanged();
+}
+
 QVariantMap AppController::buildAuthInfo() const
 {
     QVariantMap map;
@@ -353,6 +409,32 @@ QVariantList AppController::buildConversation() const
     return list;
 }
 
+QVariantList AppController::buildConversationList() const
+{
+    QVariantList list;
+    for (const QString &conversationId : m_conversationOrder) {
+        QVariantMap entry;
+        entry.insert(QStringLiteral("id"), conversationId);
+        entry.insert(QStringLiteral("title"), conversationDisplayName(conversationId));
+        const QString subtitle = conversationSubtitle(conversationId);
+        if (!subtitle.isEmpty()) {
+            entry.insert(QStringLiteral("subtitle"), subtitle);
+        }
+
+        const QList<Message> &messages = m_conversations.value(conversationId);
+        if (!messages.isEmpty()) {
+            const Message &last = messages.constLast();
+            entry.insert(QStringLiteral("lastMessage"), last.text);
+            entry.insert(QStringLiteral("lastTimestamp"), last.timestamp);
+        } else {
+            entry.insert(QStringLiteral("lastMessage"), tr("Нет сообщений"));
+            entry.insert(QStringLiteral("lastTimestamp"), QString());
+        }
+        list.append(entry);
+    }
+    return list;
+}
+
 void AppController::initializeAfterRegistration()
 {
     if (m_initialized) {
@@ -360,6 +442,7 @@ void AppController::initializeAfterRegistration()
         ensureDirectoryContainsAuthUser();
         emit authInfoChanged();
         emit userListChanged();
+        emit conversationListChanged();
         if (m_isRegistered) {
             fetchUsersFromServer();
         }
@@ -392,6 +475,7 @@ void AppController::initializeAfterRegistration()
     emit authInfoChanged();
     emit userListChanged();
     emit conversationChanged();
+    emit conversationListChanged();
     emit currentConversationChanged();
 
     fetchHistoryFromServer();
@@ -466,6 +550,7 @@ void AppController::loadServerData()
 {
     m_directory.clear();
     m_conversations.clear();
+    m_conversationOrder.clear();
     m_authenticatedRoles.clear();
     m_authenticatedUser = User{};
     m_lastServerMsgId.clear();
@@ -485,6 +570,7 @@ void AppController::loadServerData()
     const bool historyLoaded = loadMessageHistory(messagesPath);
     if (m_conversations.isEmpty()) {
         m_conversations.insert(QStringLiteral("corp-secure-room"), {});
+        promoteConversation(QStringLiteral("corp-secure-room"));
     }
 
     if (m_currentConversation.trimmed().isEmpty()) {
@@ -692,8 +778,10 @@ bool AppController::loadMessageHistory(const QString &path)
         message.text = text;
         message.outgoing = senderId == m_authenticatedUser.userId;
         if (sentUnix > 0) {
+            message.sentUnixSec = sentUnix;
             message.timestamp = QDateTime::fromSecsSinceEpoch(sentUnix).toString(QStringLiteral("HH:mm:ss"));
         } else {
+            message.sentUnixSec = QDateTime::currentDateTimeUtc().toSecsSinceEpoch();
             message.timestamp = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"));
         }
 
@@ -702,6 +790,8 @@ bool AppController::loadMessageHistory(const QString &path)
         m_knownServerMsgIds.insert(serverMsgId);
         updateLastServerMsgId(serverMsgId);
     }
+
+    rebuildConversationOrder();
 
     return true;
 }
@@ -1020,7 +1110,8 @@ void AppController::addServerMessage(const QString &conversationId,
                                       bool outgoing,
                                       qint64 sentUnixSec)
 {
-    if (conversationId.trimmed().isEmpty() || serverMsgId.trimmed().isEmpty()) {
+    const QString trimmedId = conversationId.trimmed();
+    if (trimmedId.isEmpty() || serverMsgId.trimmed().isEmpty()) {
         return;
     }
 
@@ -1030,32 +1121,45 @@ void AppController::addServerMessage(const QString &conversationId,
     message.text = text;
     message.outgoing = outgoing;
     if (sentUnixSec > 0) {
+        message.sentUnixSec = sentUnixSec;
         message.timestamp = QDateTime::fromSecsSinceEpoch(sentUnixSec).toString(QStringLiteral("HH:mm:ss"));
     } else {
+        message.sentUnixSec = QDateTime::currentDateTimeUtc().toSecsSinceEpoch();
         message.timestamp = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"));
     }
 
-    QList<Message> &messages = m_conversations[conversationId];
+    QList<Message> &messages = m_conversations[trimmedId];
     messages.append(message);
     m_knownServerMsgIds.insert(serverMsgId);
     updateLastServerMsgId(serverMsgId);
 
-    if (conversationId == m_currentConversation) {
+    promoteConversation(trimmedId);
+    emit conversationListChanged();
+
+    if (trimmedId == m_currentConversation) {
         emit conversationChanged();
     }
 }
 
 QString AppController::addMessage(const QString &conversationId, const QString &author, const QString &text, bool outgoing)
 {
+    const QString trimmedId = conversationId.trimmed();
+    if (trimmedId.isEmpty()) {
+        return {};
+    }
+
     Message message;
     message.serverMsgId = QStringLiteral("local-%1").arg(m_nextMessageId++);
     message.author = author;
     message.text = text;
     message.outgoing = outgoing;
     message.timestamp = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"));
-    QList<Message> &messages = m_conversations[conversationId];
+    message.sentUnixSec = QDateTime::currentDateTimeUtc().toSecsSinceEpoch();
+    QList<Message> &messages = m_conversations[trimmedId];
     messages.append(message);
-    if (conversationId == m_currentConversation) {
+    promoteConversation(trimmedId);
+    emit conversationListChanged();
+    if (trimmedId == m_currentConversation) {
         emit conversationChanged();
     }
     return message.serverMsgId;
@@ -1097,4 +1201,90 @@ AppController::Device *AppController::findDevice(const QString &userId, const QS
         }
     }
     return nullptr;
+}
+
+void AppController::promoteConversation(const QString &conversationId)
+{
+    const QString trimmed = conversationId.trimmed();
+    if (trimmed.isEmpty()) {
+        return;
+    }
+    m_conversationOrder.removeAll(trimmed);
+    m_conversationOrder.prepend(trimmed);
+}
+
+void AppController::rebuildConversationOrder()
+{
+    QStringList keys = m_conversations.keys();
+    auto scoreFor = [this](const QString &id) -> qint64 {
+        const QList<Message> &messages = m_conversations.value(id);
+        if (messages.isEmpty()) {
+            return 0;
+        }
+        const Message &last = messages.constLast();
+        if (last.sentUnixSec > 0) {
+            return last.sentUnixSec;
+        }
+        return parseServerMsgNumeric(last.serverMsgId);
+    };
+
+    std::sort(keys.begin(), keys.end(), [&](const QString &left, const QString &right) {
+        const qint64 leftScore = scoreFor(left);
+        const qint64 rightScore = scoreFor(right);
+        if (leftScore == rightScore) {
+            return left < right;
+        }
+        return leftScore > rightScore;
+    });
+
+    m_conversationOrder = keys;
+}
+
+QString AppController::conversationDisplayName(const QString &conversationId) const
+{
+    const QString trimmed = conversationId.trimmed();
+    if (trimmed.compare(QStringLiteral("corp-secure-room"), Qt::CaseInsensitive) == 0) {
+        return tr("Общий канал");
+    }
+
+    const QString myId = m_authenticatedUser.userId.trimmed();
+    if (!myId.isEmpty() && trimmed.startsWith(QStringLiteral("dm-"))) {
+        const QString payload = trimmed.mid(3);
+        QString partnerId;
+        const QString prefix = myId + QLatin1Char('-');
+        if (payload.startsWith(prefix)) {
+            partnerId = payload.mid(prefix.size());
+        } else {
+            const QString suffix = QLatin1Char('-') + myId;
+            if (payload.endsWith(suffix)) {
+                partnerId = payload.left(payload.size() - suffix.size());
+            }
+        }
+        if (!partnerId.isEmpty()) {
+            const QString partnerName = nicknameForUserId(partnerId);
+            return partnerName.isEmpty() ? partnerId : partnerName;
+        }
+    }
+
+    return trimmed;
+}
+
+QString AppController::conversationSubtitle(const QString &conversationId) const
+{
+    const QString trimmed = conversationId.trimmed();
+    if (trimmed.compare(QStringLiteral("corp-secure-room"), Qt::CaseInsensitive) == 0) {
+        return tr("Внутренний канал");
+    }
+
+    const QString myId = m_authenticatedUser.userId.trimmed();
+    if (!myId.isEmpty() && trimmed.startsWith(QStringLiteral("dm-"))) {
+        const QString payload = trimmed.mid(3);
+        const QString prefix = myId + QLatin1Char('-');
+        const QString suffix = QLatin1Char('-') + myId;
+        if (payload.startsWith(prefix) || payload.endsWith(suffix)) {
+            return tr("Личный чат");
+        }
+    }
+
+    return QString();
 }

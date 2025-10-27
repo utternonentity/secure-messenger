@@ -18,6 +18,7 @@ class AppController : public QObject {
     Q_PROPERTY(QVariantMap authInfo READ authInfo NOTIFY authInfoChanged)
     Q_PROPERTY(QVariantList userList READ userList NOTIFY userListChanged)
     Q_PROPERTY(QVariantList conversation READ conversation NOTIFY conversationChanged)
+    Q_PROPERTY(QVariantList conversationList READ conversationList NOTIFY conversationListChanged)
     Q_PROPERTY(QStringList serverLog READ serverLog NOTIFY serverLogChanged)
     Q_PROPERTY(QString currentConversation READ currentConversation WRITE setCurrentConversation NOTIFY currentConversationChanged)
     Q_PROPERTY(bool registered READ isRegistered NOTIFY registrationChanged)
@@ -29,6 +30,7 @@ public:
     QVariantMap authInfo() const;
     QVariantList userList() const;
     QVariantList conversation() const;
+    QVariantList conversationList() const;
     QStringList serverLog() const;
     QString currentConversation() const;
     void setCurrentConversation(const QString &conversationId);
@@ -43,11 +45,13 @@ public:
     Q_INVOKABLE void refreshUsers();
     Q_INVOKABLE void simulatePull();
     Q_INVOKABLE void completeRegistration(const QString &nickname);
+    Q_INVOKABLE void resetRegistration();
 
 signals:
     void authInfoChanged();
     void userListChanged();
     void conversationChanged();
+    void conversationListChanged();
     void serverLogChanged();
     void currentConversationChanged();
     void registrationChanged();
@@ -71,11 +75,13 @@ private:
         QString text;
         QString timestamp;
         bool outgoing = false;
+        qint64 sentUnixSec = 0;
     };
 
     QVariantMap buildAuthInfo() const;
     QVariantList buildUserList() const;
     QVariantList buildConversation() const;
+    QVariantList buildConversationList() const;
 
     void loadServerData();
     void initializeAfterRegistration();
@@ -107,6 +113,10 @@ private:
     void ensureDirectoryContainsAuthUser();
     User *findUser(const QString &userId);
     Device *findDevice(const QString &userId, const QString &deviceId);
+    void promoteConversation(const QString &conversationId);
+    void rebuildConversationOrder();
+    QString conversationDisplayName(const QString &conversationId) const;
+    QString conversationSubtitle(const QString &conversationId) const;
 
     bool m_isRegistered = false;
     QString m_registeredNickname;
@@ -115,6 +125,7 @@ private:
     User m_authenticatedUser;
     QList<User> m_directory;
     QHash<QString, QList<Message>> m_conversations;
+    QStringList m_conversationOrder;
     QStringList m_serverLog;
     QString m_currentConversation;
     QStringList m_authenticatedRoles;
