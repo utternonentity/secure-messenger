@@ -6,6 +6,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -15,6 +16,8 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QSettings>
+#include <QRegularExpression>
+#include <QSaveFile>
 #include <QScopedValueRollback>
 #include <QTimer>
 #include <QUrl>
@@ -65,6 +68,7 @@ AppController::AppController(QObject *parent)
         m_apiBaseUrl = QStringLiteral("http://127.0.0.1:8080");
     }
 
+    loadCredentials();
     loadRegistration();
     if (m_isRegistered) {
         initializeAfterRegistration();
@@ -249,91 +253,76 @@ void AppController::simulatePull()
     fetchHistoryFromServer(m_lastServerMsgId);
 }
 
-void AppController::completeRegistration(const QString &nickname)
+QString AppController::authenticate(const QString &nickname, const QString &password)
+{
+    const QString trimmedNickname = nickname.trimmed();
+    if (trimmedNickname.isEmpty()) {
+        return tr("Введите никнейм");
+    }
+    if (password.trimmed().isEmpty()) {
+        return tr("Введите пароль");
+    }
+
+    Credential *credential = findCredentialByNickname(trimmedNickname);
+    if (!credential) {
+        return tr("Пользователь не найден");
+    }
+    if (credential->password != password) {
+        return tr("Неверный пароль");
+    }
+
+    m_registeredUserId = credential->userId;
+    m_registeredNickname = credential->nickname;
+    m_isRegistered = true;
+
+    persistRegistration(m_registeredUserId, m_registeredNickname);
+
+    appendLog(QStringLiteral("Auth.Login -> пользователь %1 вошёл в систему")
+                  .arg(m_registeredNickname));
+
+    emit registrationChanged();
+
+    initializeAfterRegistration();
+
+    return {};
+}
+
+QString AppController::completeRegistration(const QString &nickname, const QString &password)
 {
     const QString trimmed = nickname.trimmed();
     if (trimmed.isEmpty()) {
-        return;
+        return tr("Введите никнейм");
     }
 
-    if (!m_networkManager) {
-        appendLog(QStringLiteral("Registration -> сетевой менеджер не инициализирован"));
-        return;
-    }
-    if (m_registrationInFlight) {
-        appendLog(QStringLiteral("Registration -> запрос уже выполняется"));
-        return;
+    if (password.trimmed().isEmpty()) {
+        return tr("Введите пароль");
     }
 
-    const QUrl url = buildApiUrl(QStringLiteral("/api/auth/register"));
-    if (!url.isValid()) {
-        appendLog(QStringLiteral("Registration -> некорректный адрес API (%1)").arg(m_apiBaseUrl));
-        return;
+    if (findCredentialByNickname(trimmed)) {
+        return tr("Пользователь с таким ником уже существует");
     }
 
-    QJsonObject payload;
-    payload.insert(QStringLiteral("nickname"), trimmed);
+    const QString userId = generateUserIdForNickname(trimmed);
+    Credential credential{userId, trimmed, password};
+    m_credentials.append(credential);
+    if (!persistCredentials()) {
+        m_credentials.removeLast();
+        return tr("Не удалось сохранить данные пользователя");
+    }
 
-    QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    m_registeredUserId = userId;
+    m_registeredNickname = trimmed;
+    m_isRegistered = true;
+    persistRegistration(userId, trimmed);
 
-    auto *reply = m_networkManager->post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
-    m_registrationInFlight = true;
+    appendLog(QStringLiteral("Registration -> создан профиль %1 (%2)")
+                  .arg(trimmed, userId));
 
-    appendLog(QStringLiteral("Registration -> отправлен запрос на регистрацию '%1'").arg(trimmed));
+    emit registrationChanged();
 
-    connect(reply, &QNetworkReply::finished, this, [this, reply, trimmed]() {
-        QScopedValueRollback<bool> rollback(m_registrationInFlight, false);
-        const QNetworkReply::NetworkError error = reply->error();
-        const QString errorText = reply->errorString();
-        const QByteArray payload = reply->readAll();
-        const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        reply->deleteLater();
+    initializeAfterRegistration();
 
-        if (error != QNetworkReply::NoError) {
-            appendLog(QStringLiteral("Registration -> ошибка запроса: %1").arg(errorText));
-            return;
-        }
-        if (statusCode >= 400) {
-            const QString serverMsg = QString::fromUtf8(payload).trimmed();
-            appendLog(QStringLiteral("Registration -> сервер вернул %1 %2")
-                          .arg(statusCode)
-                          .arg(serverMsg.isEmpty() ? QStringLiteral("")
-                                                   : QStringLiteral("(%1)").arg(serverMsg)));
-            return;
-        }
-
-        QJsonParseError parseError{};
-        const QJsonDocument doc = QJsonDocument::fromJson(payload, &parseError);
-        if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
-            appendLog(QStringLiteral("Registration -> некорректный ответ сервера"));
-            return;
-        }
-
-        const QJsonObject obj = doc.object();
-        const QString userId = obj.value(QStringLiteral("user_id")).toString().trimmed();
-        QString assignedNickname = obj.value(QStringLiteral("nickname")).toString(trimmed).trimmed();
-        if (assignedNickname.isEmpty()) {
-            assignedNickname = trimmed;
-        }
-        if (userId.isEmpty()) {
-            appendLog(QStringLiteral("Registration -> сервер не вернул идентификатор пользователя"));
-            return;
-        }
-
-        m_registeredUserId = userId;
-        m_registeredNickname = assignedNickname;
-        m_isRegistered = true;
-        persistRegistration(userId, assignedNickname);
-
-        appendLog(QStringLiteral("Registration -> активирован профиль %1 (%2)")
-                      .arg(assignedNickname, userId));
-
-        emit registrationChanged();
-
-        initializeAfterRegistration();
-        fetchUsersFromServer();
-    });
+    return {};
 }
 
 void AppController::resetRegistration()
@@ -395,9 +384,13 @@ QVariantList AppController::buildUserList() const
 {
     QVariantList list;
     for (const User &user : m_directory) {
+        const QString nickname = user.nickname.trimmed();
+        if (nickname.isEmpty() || nickname == tr("Неизвестный")) {
+            continue;
+        }
         QVariantMap entry;
         entry.insert(QStringLiteral("userId"), user.userId);
-        entry.insert(QStringLiteral("nickname"), user.nickname);
+        entry.insert(QStringLiteral("nickname"), nickname);
         QVariantList devices;
         for (const Device &device : user.devices) {
             QVariantMap deviceMap;
@@ -559,18 +552,20 @@ void AppController::loadRegistration()
     const QString storedNickname = settings.value(QStringLiteral("registration/nickname")).toString().trimmed();
     const QString storedUserId = settings.value(QStringLiteral("registration/userId")).toString().trimmed();
 
-    m_registeredNickname = storedNickname;
-    m_registeredUserId = storedUserId;
-
-    if (storedNickname.isEmpty() || storedUserId.isEmpty()) {
+    const Credential *credential = findCredentialByUserId(storedUserId);
+    if (storedNickname.isEmpty() || storedUserId.isEmpty() || !credential) {
         m_isRegistered = false;
         if (storedNickname.isEmpty()) {
             m_registeredNickname.clear();
+        } else {
+            m_registeredNickname = storedNickname;
         }
-        if (storedUserId.isEmpty()) {
+        if (storedUserId.isEmpty() || !credential) {
             m_registeredUserId.clear();
         }
     } else {
+        m_registeredUserId = credential->userId;
+        m_registeredNickname = credential->nickname;
         m_isRegistered = true;
     }
 }
@@ -1325,4 +1320,154 @@ QString AppController::conversationSubtitle(const QString &conversationId) const
     }
 
     return QString();
+}
+
+void AppController::loadCredentials()
+{
+    m_credentials.clear();
+
+    const QString path = credentialsFilePath();
+    QFile file(path);
+    if (!file.exists()) {
+        return;
+    }
+    if (!file.open(QIODevice::ReadOnly)) {
+        return;
+    }
+
+    QJsonParseError parseError{};
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        return;
+    }
+
+    const QJsonArray users = doc.object().value(QStringLiteral("users")).toArray();
+    for (const QJsonValue &value : users) {
+        if (!value.isObject()) {
+            continue;
+        }
+        const QJsonObject obj = value.toObject();
+        Credential credential;
+        credential.userId = obj.value(QStringLiteral("user_id")).toString().trimmed();
+        credential.nickname = obj.value(QStringLiteral("nickname")).toString().trimmed();
+        credential.password = obj.value(QStringLiteral("password")).toString();
+        if (credential.userId.isEmpty() || credential.nickname.isEmpty() || credential.password.isEmpty()) {
+            continue;
+        }
+        m_credentials.append(credential);
+    }
+}
+
+bool AppController::persistCredentials() const
+{
+    const QString path = credentialsFilePath();
+    QFileInfo info(path);
+    QDir dir = info.dir();
+    if (!dir.exists()) {
+        if (!dir.mkpath(QStringLiteral("."))) {
+            return false;
+        }
+    }
+
+    QJsonArray users;
+    for (const Credential &credential : m_credentials) {
+        const QString userId = credential.userId.trimmed();
+        const QString nickname = credential.nickname.trimmed();
+        if (userId.isEmpty() || nickname.isEmpty() || credential.password.isEmpty()) {
+            continue;
+        }
+        QJsonObject obj;
+        obj.insert(QStringLiteral("user_id"), userId);
+        obj.insert(QStringLiteral("nickname"), nickname);
+        obj.insert(QStringLiteral("password"), credential.password);
+        users.append(obj);
+    }
+
+    QJsonObject root;
+    root.insert(QStringLiteral("users"), users);
+
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        return false;
+    }
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    return file.commit();
+}
+
+QString AppController::credentialsFilePath() const
+{
+    return QDir(resolveDataDirectory()).filePath(QStringLiteral("user_credentials.json"));
+}
+
+QString AppController::generateUserIdForNickname(const QString &nickname) const
+{
+    QString sanitized = nickname.trimmed().toLower();
+    sanitized.replace(QRegularExpression(QStringLiteral("[^a-z0-9_-]+")), QStringLiteral("-"));
+    while (sanitized.startsWith(QLatin1Char('-'))) {
+        sanitized.remove(0, 1);
+    }
+    while (sanitized.endsWith(QLatin1Char('-'))) {
+        sanitized.chop(1);
+    }
+    if (sanitized.isEmpty()) {
+        sanitized = QStringLiteral("user");
+    }
+
+    QString candidate = QStringLiteral("local-%1").arg(sanitized);
+    int counter = 1;
+    while (userIdExists(candidate)) {
+        candidate = QStringLiteral("local-%1-%2").arg(sanitized).arg(++counter);
+    }
+    return candidate;
+}
+
+bool AppController::userIdExists(const QString &userId) const
+{
+    for (const Credential &credential : m_credentials) {
+        if (credential.userId.compare(userId, Qt::CaseInsensitive) == 0) {
+            return true;
+        }
+    }
+    for (const User &user : m_directory) {
+        if (user.userId.compare(userId, Qt::CaseInsensitive) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+AppController::Credential *AppController::findCredentialByNickname(const QString &nickname)
+{
+    const QString trimmed = nickname.trimmed();
+    for (Credential &credential : m_credentials) {
+        if (QString::compare(credential.nickname, trimmed, Qt::CaseInsensitive) == 0) {
+            return &credential;
+        }
+    }
+    return nullptr;
+}
+
+const AppController::Credential *AppController::findCredentialByNickname(const QString &nickname) const
+{
+    const QString trimmed = nickname.trimmed();
+    for (const Credential &credential : m_credentials) {
+        if (QString::compare(credential.nickname, trimmed, Qt::CaseInsensitive) == 0) {
+            return &credential;
+        }
+    }
+    return nullptr;
+}
+
+const AppController::Credential *AppController::findCredentialByUserId(const QString &userId) const
+{
+    const QString trimmed = userId.trimmed();
+    if (trimmed.isEmpty()) {
+        return nullptr;
+    }
+    for (const Credential &credential : m_credentials) {
+        if (QString::compare(credential.userId, trimmed, Qt::CaseInsensitive) == 0) {
+            return &credential;
+        }
+    }
+    return nullptr;
 }

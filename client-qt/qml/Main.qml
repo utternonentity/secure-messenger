@@ -92,26 +92,48 @@ ApplicationWindow {
                     anchors.margins: 28
                     spacing: 18
 
+                    property bool registrationMode: false
+                    property string formError: ""
+
+                    function performPrimaryAction() {
+                        if (!App) {
+                            formError = qsTr("Сервис недоступен");
+                            return;
+                        }
+                        var result = registrationMode
+                                ? (App.completeRegistration ? App.completeRegistration(authNickname.text, authPassword.text) : qsTr("Сервис недоступен"))
+                                : (App.authenticate ? App.authenticate(authNickname.text, authPassword.text) : qsTr("Сервис недоступен"));
+                        if (result && result.length > 0) {
+                            formError = result;
+                        } else {
+                            formError = "";
+                            authPassword.text = "";
+                        }
+                    }
+
                     Label {
-                        text: qsTr("Добро пожаловать в Secure Messenger")
+                        text: registrationMode ? qsTr("Создайте новый профиль Secure Messenger")
+                                               : qsTr("Добро пожаловать в Secure Messenger")
                         font.pixelSize: 22
                         font.bold: true
                         wrapMode: Text.WordWrap
                     }
 
                     Label {
-                        text: qsTr("Чтобы подключиться, зарегистрируйте новый профиль. Укажите желаемый никнейм — сервер выдаст уникальный идентификатор.")
+                        text: registrationMode
+                              ? qsTr("Придумайте уникальный никнейм и пароль, чтобы зарегистрироваться.")
+                              : qsTr("Введите свой никнейм и пароль для входа в систему.")
                         color: subtleText
                         wrapMode: Text.WordWrap
                         Layout.fillWidth: true
                     }
 
                     TextField {
-                        id: registrationNickname
+                        id: authNickname
                         Layout.fillWidth: true
                         placeholderText: qsTr("Никнейм")
                         selectByMouse: true
-                        onAccepted: registerButton.clicked()
+                        onAccepted: authPassword.forceActiveFocus()
                         Component.onCompleted: {
                             if (!App || !App.registered)
                                 forceActiveFocus()
@@ -120,10 +142,30 @@ ApplicationWindow {
                         Connections {
                             target: App
                             function onRegistrationChanged() {
-                                if (App && !App.registered)
-                                    registrationNickname.forceActiveFocus()
+                                if (App && !App.registered) {
+                                    authNickname.forceActiveFocus()
+                                    authPassword.text = ""
+                                    formError = ""
+                                }
                             }
                         }
+                    }
+
+                    TextField {
+                        id: authPassword
+                        Layout.fillWidth: true
+                        placeholderText: qsTr("Пароль")
+                        echoMode: TextInput.Password
+                        selectByMouse: true
+                        onAccepted: performPrimaryAction()
+                    }
+
+                    Label {
+                        visible: formError.length > 0
+                        text: formError
+                        color: "#f87171"
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
                     }
 
                     RowLayout {
@@ -131,16 +173,11 @@ ApplicationWindow {
                         spacing: 12
 
                         Button {
-                            id: registerButton
-                            text: qsTr("Зарегистрироваться")
-                            icon.name: "account-circle"
-                            enabled: registrationNickname.text.trim().length > 0 && App && App.completeRegistration
-                            onClicked: {
-                                if (!enabled)
-                                    return
-                                App.completeRegistration(registrationNickname.text)
-                                registrationNickname.text = ""
-                            }
+                            id: primaryAction
+                            text: registrationMode ? qsTr("Зарегистрироваться") : qsTr("Войти")
+                            icon.name: registrationMode ? "account-circle" : "login"
+                            enabled: authNickname.text.trim().length > 0 && authPassword.text.length > 0 && App && (registrationMode ? App.completeRegistration : App.authenticate)
+                            onClicked: performPrimaryAction()
                         }
 
                         Item { Layout.fillWidth: true }
@@ -150,6 +187,31 @@ ApplicationWindow {
                             icon.name: "reload"
                             enabled: App && App.refreshUsers
                             onClicked: App.refreshUsers()
+                        }
+                    }
+
+                    Item {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: toggleLabel.implicitHeight + 8
+
+                        Label {
+                            id: toggleLabel
+                            anchors.centerIn: parent
+                            text: registrationMode ? qsTr("Уже есть аккаунт? Войдите.")
+                                                   : qsTr("Нет аккаунта? Зарегистрируйтесь.")
+                            color: subtleText
+                            font.pixelSize: 13
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                registrationMode = !registrationMode
+                                formError = ""
+                                authPassword.text = ""
+                                authNickname.forceActiveFocus()
+                            }
                         }
                     }
 
@@ -180,7 +242,8 @@ ApplicationWindow {
                                 width: directoryPreview.width
                                 property var entry: modelData
                                 property string userId: String(entry["userId"] || "")
-                                property bool validEntry: userId.length > 0
+                                property string nickname: String(entry["nickname"] || "")
+                                property bool validEntry: userId.length > 0 && nickname.length > 0
                                 implicitHeight: validEntry ? previewContent.implicitHeight + 12 : 0
                                 visible: validEntry
 
@@ -198,7 +261,7 @@ ApplicationWindow {
                                         spacing: 2
 
                                         Label {
-                                            text: String(entry["nickname"] || qsTr("Неизвестный"))
+                                            text: nickname
                                             font.pixelSize: 14
                                             font.bold: true
                                         }

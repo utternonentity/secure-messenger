@@ -44,7 +44,8 @@ public:
     Q_INVOKABLE void revokeDevice(const QString &userId, const QString &deviceId);
     Q_INVOKABLE void refreshUsers();
     Q_INVOKABLE void simulatePull();
-    Q_INVOKABLE void completeRegistration(const QString &nickname);
+    Q_INVOKABLE QString authenticate(const QString &nickname, const QString &password);
+    Q_INVOKABLE QString completeRegistration(const QString &nickname, const QString &password);
     Q_INVOKABLE void resetRegistration();
 
 signals:
@@ -117,6 +118,21 @@ private:
     void rebuildConversationOrder();
     QString conversationDisplayName(const QString &conversationId) const;
     QString conversationSubtitle(const QString &conversationId) const;
+    void loadCredentials();
+    bool persistCredentials() const;
+    QString credentialsFilePath() const;
+    QString generateUserIdForNickname(const QString &nickname) const;
+    bool userIdExists(const QString &userId) const;
+
+    struct Credential {
+        QString userId;
+        QString nickname;
+        QString password;
+    };
+
+    Credential *findCredentialByNickname(const QString &nickname);
+    const Credential *findCredentialByNickname(const QString &nickname) const;
+    const Credential *findCredentialByUserId(const QString &userId) const;
 
     bool m_isRegistered = false;
     QString m_registeredNickname;
@@ -136,4 +152,5 @@ private:
     QTimer *m_pollTimer = nullptr;
     QString m_apiBaseUrl;
     bool m_registrationInFlight = false;
+    QList<Credential> m_credentials;
 };

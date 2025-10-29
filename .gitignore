@@ -31,6 +31,7 @@ server/bin/
 coverage.out
 *.db
 *.json
+!data/user_credentials.json
 # Misc
 *.cache
 *.pdb
