@@ -17,6 +17,7 @@ import (
 	"github.com/utternonentity/secure-messenger/server/internal/identity"
 	"github.com/utternonentity/secure-messenger/server/internal/messaging"
 	"github.com/utternonentity/secure-messenger/server/internal/mtls"
+	"github.com/utternonentity/secure-messenger/server/internal/storage"
 )
 
 func main() {
@@ -29,14 +30,30 @@ func main() {
 	httpListenAddr := flag.String("http-listen", ":8080", "Address the HTTP API should listen on")
 	flag.Parse()
 
-	if err := identity.EnsureSeedData(*identityPath); err != nil {
+	identityStore, err := storage.ResolveDataPath(*identityPath)
+	if err != nil {
+		log.Fatalf("resolve identity store: %v", err)
+	}
+	for _, legacy := range identityStore.Redundant {
+		log.Printf("legacy identity store detected at %s; delete it to avoid confusion", legacy)
+	}
+
+	messageStore, err := storage.ResolveDataPath(*storePath)
+	if err != nil {
+		log.Fatalf("resolve message store: %v", err)
+	}
+	for _, legacy := range messageStore.Redundant {
+		log.Printf("legacy message store detected at %s; delete it to avoid confusion", legacy)
+	}
+
+	if err := identity.EnsureSeedData(identityStore.Primary); err != nil {
 		log.Fatalf("seed identity store: %v", err)
 	}
-	if err := messaging.EnsureSeedData(*storePath); err != nil {
+	if err := messaging.EnsureSeedData(messageStore.Primary); err != nil {
 		log.Fatalf("seed message store: %v", err)
 	}
 
-	identityManager, err := identity.NewManager(*identityPath)
+	identityManager, err := identity.NewManager(identityStore.Primary)
 	if err != nil {
 		log.Fatalf("init identity store: %v", err)
 	}
@@ -62,7 +79,7 @@ func main() {
 
 	srv := grpc.NewServer(grpc.Creds(credentials.NewTLS(cfg)))
 
-	msgStore, err := messaging.NewStore(*storePath)
+	msgStore, err := messaging.NewStore(messageStore.Primary)
 	if err != nil {
 		log.Fatalf("init message store: %v", err)
 	}
