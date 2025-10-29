@@ -198,16 +198,9 @@ ApplicationWindow {
                                         spacing: 2
 
                                         Label {
-                                            text: String(entry["nickname"] || userId)
+                                            text: String(entry["nickname"] || qsTr("Неизвестный"))
                                             font.pixelSize: 14
                                             font.bold: true
-                                        }
-
-                                        Label {
-                                            text: userId
-                                            font.pixelSize: 12
-                                            color: subtleText
-                                            elide: Text.ElideRight
                                         }
                                     }
                                 }
@@ -482,12 +475,6 @@ ApplicationWindow {
                                         elide: Text.ElideRight
                                     }
 
-                                    Label {
-                                        text: App && App.currentConversation ? String(App.currentConversation) : ""
-                                        color: subtleText
-                                        font.pixelSize: 12
-                                        visible: App && App.currentConversation
-                                    }
                                 }
 
                                 Rectangle {
@@ -670,8 +657,9 @@ ApplicationWindow {
 
         onAccepted: {
             const trimmed = newChatField.text.trim()
-            if (App && App.startConversationWith && trimmed.length > 0)
-                App.startConversationWith(trimmed)
+            const target = newChatDialog.selectedUserId.length > 0 ? newChatDialog.selectedUserId : trimmed
+            if (App && App.startConversationWith && target.length > 0)
+                App.startConversationWith(target)
         }
 
         onClosed: {
@@ -682,17 +670,18 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             anchors.fill: parent
             anchors.margins: 20
-            spacing: 12
+            spacing: 16
 
             Label {
-                text: qsTr("Введите идентификатор пользователя или выберите запись из справочника")
+                Layout.fillWidth: true
+                text: qsTr("Введите никнейм или выберите запись из справочника")
                 wrapMode: Text.WordWrap
             }
 
             TextField {
                 id: newChatField
                 Layout.fillWidth: true
-                placeholderText: qsTr("user-id")
+                placeholderText: qsTr("Никнейм или идентификатор")
                 selectByMouse: true
                 onAccepted: {
                     if (text.trim().length > 0)
@@ -721,7 +710,7 @@ ApplicationWindow {
                         width: directoryList.width
                         property var entry: modelData
                         property string userId: String(entry["userId"] || "")
-                        property string nickname: String(entry["nickname"] || userId)
+                        property string nickname: String(entry["nickname"] || qsTr("Неизвестный"))
                         property string currentUser: String(App && App.authInfo ? App.authInfo.userId : "")
                         visible: userId.length > 0 && userId !== currentUser
                         implicitHeight: visible ? delegateContent.implicitHeight + 12 : 0
@@ -742,13 +731,6 @@ ApplicationWindow {
                                 font.bold: true
                                 elide: Text.ElideRight
                             }
-
-                            Label {
-                                text: userId
-                                color: subtleText
-                                font.pixelSize: 12
-                                elide: Text.ElideRight
-                            }
                         }
 
                         MouseArea {
@@ -757,8 +739,7 @@ ApplicationWindow {
                                 if (!visible)
                                     return
                                 newChatDialog.selectedUserId = userId
-                                newChatField.text = userId
-                                newChatField.selectAll()
+                                newChatField.text = nickname
                                 newChatDialog.accept()
                             }
                         }
@@ -785,6 +766,7 @@ ApplicationWindow {
                 color: subtleText
                 font.pixelSize: 12
                 wrapMode: Text.WordWrap
+                Layout.fillWidth: true
             }
         }
 
@@ -803,7 +785,7 @@ ApplicationWindow {
                 id: confirmNewChat
                 text: qsTr("Создать")
                 icon.name: "chat"
-                enabled: newChatField.text.trim().length > 0
+                enabled: newChatField.text.trim().length > 0 || newChatDialog.selectedUserId.length > 0
                 onClicked: {
                     if (enabled)
                         newChatDialog.accept()
@@ -815,6 +797,7 @@ ApplicationWindow {
         onOpened: {
             if (App && App.refreshUsers)
                 App.refreshUsers()
+            newChatDialog.selectedUserId = ""
             newChatField.forceActiveFocus()
         }
     }

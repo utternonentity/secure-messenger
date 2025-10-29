@@ -61,19 +61,6 @@ func EnsureSeedData(path string) error {
 				},
 			},
 		},
-		{
-			UserID:   "user-0003",
-			Nickname: "bytefox",
-			Roles:    []string{"user"},
-			Devices: map[string]storedDevice{
-				"device-oleg-desktop": {
-					DeviceID:    "device-oleg-desktop",
-					CertDER:     []byte("Oleg desktop"),
-					Revoked:     false,
-					UpdatedUnix: now,
-				},
-			},
-		},
 	}
 
 	wrapper := storeFile{Users: users}

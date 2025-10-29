@@ -2,6 +2,7 @@
 
 #include <QByteArray>
 #include <QCoreApplication>
+#include <QDate>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -9,6 +10,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
+#include <QLocale>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -158,18 +160,26 @@ void AppController::startConversationWith(const QString &userId)
         return;
     }
 
+    QString targetId = trimmed;
+    for (const User &user : m_directory) {
+        if (QString::compare(user.nickname, trimmed, Qt::CaseInsensitive) == 0) {
+            targetId = user.userId.trimmed();
+            break;
+        }
+    }
+
     const QString myId = m_authenticatedUser.userId.trimmed();
     if (myId.isEmpty()) {
         appendLog(QStringLiteral("Messaging.Direct -> профиль не активирован"));
         return;
     }
 
-    if (trimmed == myId) {
+    if (targetId == myId) {
         appendLog(QStringLiteral("Messaging.Direct -> попытка открыть чат с самим собой отклонена"));
         return;
     }
 
-    const QString directChannel = canonicalDirectConversationId(trimmed, myId);
+    const QString directChannel = canonicalDirectConversationId(targetId, myId);
     if (directChannel.isEmpty()) {
         appendLog(QStringLiteral("Messaging.Direct -> не удалось вычислить идентификатор канала"));
         return;
@@ -439,7 +449,18 @@ QVariantList AppController::buildConversationList() const
         if (!messages.isEmpty()) {
             const Message &last = messages.constLast();
             entry.insert(QStringLiteral("lastMessage"), last.text);
-            entry.insert(QStringLiteral("lastTimestamp"), last.timestamp);
+
+            QString displayTime = last.timestamp;
+            if (last.sentUnixSec > 0) {
+                const QDateTime lastMoment = QDateTime::fromSecsSinceEpoch(last.sentUnixSec).toLocalTime();
+                if (lastMoment.date() == QDate::currentDate()) {
+                    displayTime = lastMoment.toString(QStringLiteral("HH:mm"));
+                } else {
+                    displayTime = QLocale().toString(lastMoment.date(), QLocale::ShortFormat);
+                }
+            }
+
+            entry.insert(QStringLiteral("lastTimestamp"), displayTime);
         } else {
             entry.insert(QStringLiteral("lastMessage"), tr("Нет сообщений"));
             entry.insert(QStringLiteral("lastTimestamp"), QString());
@@ -633,16 +654,8 @@ bool AppController::loadUserDirectory(const QString &path)
                               encodedCertificate(QStringLiteral("device-maria-mobile"), QStringLiteral("mobile")),
                               false});
 
-        User oleg;
-        oleg.userId = QStringLiteral("user-0003");
-        oleg.nickname = QStringLiteral("bytefox");
-        oleg.devices.append({QStringLiteral("device-oleg-desktop"),
-                             encodedCertificate(QStringLiteral("device-oleg-desktop"), QStringLiteral("desktop")),
-                             false});
-
         m_directory.append(m_authenticatedUser);
         m_directory.append(maria);
-        m_directory.append(oleg);
         return false;
     }
 
@@ -838,14 +851,21 @@ QString AppController::resolveDataDirectory() const
 QString AppController::nicknameForUserId(const QString &userId) const
 {
     if (userId == m_authenticatedUser.userId) {
-        return m_authenticatedUser.nickname;
+        const QString selfName = m_authenticatedUser.nickname.trimmed();
+        if (!selfName.isEmpty()) {
+            return selfName;
+        }
     }
     for (const User &user : m_directory) {
         if (user.userId == userId) {
-            return user.nickname;
+            const QString name = user.nickname.trimmed();
+            if (!name.isEmpty()) {
+                return name;
+            }
+            break;
         }
     }
-    return userId;
+    return tr("Неизвестный");
 }
 
 void AppController::fetchHistoryFromServer(const QString &sinceServerMsgId)
@@ -1225,8 +1245,10 @@ void AppController::promoteConversation(const QString &conversationId)
     if (trimmed.isEmpty()) {
         return;
     }
-    m_conversationOrder.removeAll(trimmed);
-    m_conversationOrder.prepend(trimmed);
+    if (!m_conversations.contains(trimmed)) {
+        m_conversations.insert(trimmed, {});
+    }
+    rebuildConversationOrder();
 }
 
 void AppController::rebuildConversationOrder()
@@ -1278,7 +1300,7 @@ QString AppController::conversationDisplayName(const QString &conversationId) co
         }
         if (!partnerId.isEmpty()) {
             const QString partnerName = nicknameForUserId(partnerId);
-            return partnerName.isEmpty() ? partnerId : partnerName;
+            return partnerName;
         }
     }
 
