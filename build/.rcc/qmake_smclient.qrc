@@ -1,0 +1,6 @@
+<RCC>
+  <qresource prefix="/smclient">
+    <file alias="qmldir">/home/yves/pet_projects/secure-messenger/build/smclient/qmldir</file>
+  </qresource>
+</RCC>
+

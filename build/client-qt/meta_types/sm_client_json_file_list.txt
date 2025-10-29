@@ -1,0 +1,1 @@
+/home/yves/pet_projects/secure-messenger/build/client-qt/sm_client_autogen/include/../UVLADIE3JM/moc_AppController.cpp.json

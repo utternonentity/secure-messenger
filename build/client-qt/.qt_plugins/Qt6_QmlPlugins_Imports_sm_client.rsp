@@ -1,0 +1,14 @@
+-rootPath
+/home/yves/pet_projects/secure-messenger/client-qt
+-cmake-output
+-output-file
+/home/yves/pet_projects/secure-messenger/build/client-qt/.qt_plugins/Qt6_QmlPlugins_Imports_sm_client.cmake
+-importPath
+/home/yves/pet_projects/secure-messenger/build/client-qt/smclient
+-importPath
+/home/yves/pet_projects/secure-messenger/build/client-qt
+-importPath
+/usr/lib/x86_64-linux-gnu/qt6/qml
+-qrcFiles
+/home/yves/pet_projects/secure-messenger/build/client-qt/.rcc/qmake_smclient.qrc
+/home/yves/pet_projects/secure-messenger/build/client-qt/.rcc/sm_client_raw_qml_0.qrc

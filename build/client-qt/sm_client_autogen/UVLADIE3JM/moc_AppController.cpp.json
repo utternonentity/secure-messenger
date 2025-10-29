@@ -1,0 +1,268 @@
+{
+    "classes": [
+        {
+            "className": "AppController",
+            "methods": [
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "text",
+                            "type": "QString"
+                        }
+                    ],
+                    "name": "send",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "userId",
+                            "type": "QString"
+                        }
+                    ],
+                    "name": "startConversationWith",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "userId",
+                            "type": "QString"
+                        },
+                        {
+                            "name": "deviceId",
+                            "type": "QString"
+                        }
+                    ],
+                    "name": "rotateDevice",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "userId",
+                            "type": "QString"
+                        },
+                        {
+                            "name": "deviceId",
+                            "type": "QString"
+                        }
+                    ],
+                    "name": "revokeDevice",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "name": "refreshUsers",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "name": "simulatePull",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "nickname",
+                            "type": "QString"
+                        },
+                        {
+                            "name": "password",
+                            "type": "QString"
+                        }
+                    ],
+                    "name": "authenticate",
+                    "returnType": "QString"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "nickname",
+                            "type": "QString"
+                        },
+                        {
+                            "name": "password",
+                            "type": "QString"
+                        }
+                    ],
+                    "name": "completeRegistration",
+                    "returnType": "QString"
+                },
+                {
+                    "access": "public",
+                    "name": "resetRegistration",
+                    "returnType": "void"
+                }
+            ],
+            "object": true,
+            "properties": [
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "index": 0,
+                    "name": "authInfo",
+                    "notify": "authInfoChanged",
+                    "read": "authInfo",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QVariantMap",
+                    "user": false
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "index": 1,
+                    "name": "userList",
+                    "notify": "userListChanged",
+                    "read": "userList",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QVariantList",
+                    "user": false
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "index": 2,
+                    "name": "conversation",
+                    "notify": "conversationChanged",
+                    "read": "conversation",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QVariantList",
+                    "user": false
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "index": 3,
+                    "name": "conversationList",
+                    "notify": "conversationListChanged",
+                    "read": "conversationList",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QVariantList",
+                    "user": false
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "index": 4,
+                    "name": "serverLog",
+                    "notify": "serverLogChanged",
+                    "read": "serverLog",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QStringList",
+                    "user": false
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "index": 5,
+                    "name": "currentConversation",
+                    "notify": "currentConversationChanged",
+                    "read": "currentConversation",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "write": "setCurrentConversation"
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "index": 6,
+                    "name": "registered",
+                    "notify": "registrationChanged",
+                    "read": "isRegistered",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "bool",
+                    "user": false
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "index": 7,
+                    "name": "nickname",
+                    "notify": "registrationChanged",
+                    "read": "nickname",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false
+                }
+            ],
+            "qualifiedClassName": "AppController",
+            "signals": [
+                {
+                    "access": "public",
+                    "name": "authInfoChanged",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "name": "userListChanged",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "name": "conversationChanged",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "name": "conversationListChanged",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "name": "serverLogChanged",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "name": "currentConversationChanged",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "name": "registrationChanged",
+                    "returnType": "void"
+                }
+            ],
+            "superClasses": [
+                {
+                    "access": "public",
+                    "name": "QObject"
+                }
+            ]
+        }
+    ],
+    "inputFile": "AppController.h",
+    "outputRevision": 68
+}

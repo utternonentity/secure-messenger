@@ -1,0 +1,5 @@
+module smclient
+typeinfo sm_client.qmltypes
+prefer :/smclient/
+Main 1.0 qml/Main.qml
+
