@@ -49,6 +49,7 @@ type storedUser struct {
 	UserID   string                  `json:"user_id"`
 	Nickname string                  `json:"nickname"`
 	Roles    []string                `json:"roles"`
+	Password string                  `json:"password,omitempty"`
 	Devices  map[string]storedDevice `json:"devices"`
 }
 

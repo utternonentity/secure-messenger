@@ -120,7 +120,7 @@ private:
     QString conversationSubtitle(const QString &conversationId) const;
     void loadCredentials();
     bool persistCredentials() const;
-    QString credentialsFilePath() const;
+    QString identityStoreFilePath() const;
     QString generateUserIdForNickname(const QString &nickname) const;
     bool userIdExists(const QString &userId) const;
 

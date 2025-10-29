@@ -1326,7 +1326,7 @@ void AppController::loadCredentials()
 {
     m_credentials.clear();
 
-    const QString path = credentialsFilePath();
+    const QString path = identityStoreFilePath();
     QFile file(path);
     if (!file.exists()) {
         return;
@@ -1349,18 +1349,19 @@ void AppController::loadCredentials()
         const QJsonObject obj = value.toObject();
         Credential credential;
         credential.userId = obj.value(QStringLiteral("user_id")).toString().trimmed();
-        credential.nickname = obj.value(QStringLiteral("nickname")).toString().trimmed();
+        credential.nickname = obj.value(QStringLiteral("nickname")).toString(credential.userId).trimmed();
         credential.password = obj.value(QStringLiteral("password")).toString();
-        if (credential.userId.isEmpty() || credential.nickname.isEmpty() || credential.password.isEmpty()) {
+        if (credential.userId.isEmpty() || credential.nickname.isEmpty() || credential.password.trimmed().isEmpty()) {
             continue;
         }
+        credential.password = credential.password.trimmed();
         m_credentials.append(credential);
     }
 }
 
 bool AppController::persistCredentials() const
 {
-    const QString path = credentialsFilePath();
+    const QString path = identityStoreFilePath();
     QFileInfo info(path);
     QDir dir = info.dir();
     if (!dir.exists()) {
@@ -1369,21 +1370,74 @@ bool AppController::persistCredentials() const
         }
     }
 
-    QJsonArray users;
+    QJsonObject root;
+    QJsonArray existingUsers;
+
+    {
+        QFile file(path);
+        if (file.exists() && file.open(QIODevice::ReadOnly)) {
+            QJsonParseError parseError{};
+            const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
+            if (parseError.error == QJsonParseError::NoError && doc.isObject()) {
+                root = doc.object();
+                existingUsers = root.value(QStringLiteral("users")).toArray();
+            }
+        }
+    }
+
+    QHash<QString, QJsonObject> usersById;
+    QStringList order;
+    QJsonArray preserved;
+
+    for (const QJsonValue &value : existingUsers) {
+        if (!value.isObject()) {
+            preserved.append(value);
+            continue;
+        }
+        const QJsonObject obj = value.toObject();
+        const QString userId = obj.value(QStringLiteral("user_id")).toString().trimmed();
+        if (userId.isEmpty()) {
+            preserved.append(value);
+            continue;
+        }
+        usersById.insert(userId, obj);
+        order.append(userId);
+    }
+
     for (const Credential &credential : m_credentials) {
         const QString userId = credential.userId.trimmed();
         const QString nickname = credential.nickname.trimmed();
-        if (userId.isEmpty() || nickname.isEmpty() || credential.password.isEmpty()) {
+        const QString password = credential.password.trimmed();
+        if (userId.isEmpty() || nickname.isEmpty() || password.isEmpty()) {
             continue;
         }
-        QJsonObject obj;
+
+        QJsonObject obj = usersById.value(userId);
         obj.insert(QStringLiteral("user_id"), userId);
         obj.insert(QStringLiteral("nickname"), nickname);
-        obj.insert(QStringLiteral("password"), credential.password);
-        users.append(obj);
+        obj.insert(QStringLiteral("password"), password);
+
+        const QJsonValue rolesValue = obj.value(QStringLiteral("roles"));
+        if (!rolesValue.isArray() || rolesValue.toArray().isEmpty()) {
+            obj.insert(QStringLiteral("roles"), QJsonArray{QJsonValue(QStringLiteral("user"))});
+        }
+        if (!obj.contains(QStringLiteral("devices"))) {
+            obj.insert(QStringLiteral("devices"), QJsonObject());
+        }
+
+        usersById.insert(userId, obj);
+        if (!order.contains(userId)) {
+            order.append(userId);
+        }
     }
 
-    QJsonObject root;
+    QJsonArray users;
+    for (const QString &userId : order) {
+        users.append(usersById.value(userId));
+    }
+    for (const QJsonValue &value : preserved) {
+        users.append(value);
+    }
     root.insert(QStringLiteral("users"), users);
 
     QSaveFile file(path);
@@ -1394,9 +1448,9 @@ bool AppController::persistCredentials() const
     return file.commit();
 }
 
-QString AppController::credentialsFilePath() const
+QString AppController::identityStoreFilePath() const
 {
-    return QDir(resolveDataDirectory()).filePath(QStringLiteral("user_credentials.json"));
+    return QDir(resolveDataDirectory()).filePath(QStringLiteral("identity_store.json"));
 }
 
 QString AppController::generateUserIdForNickname(const QString &nickname) const

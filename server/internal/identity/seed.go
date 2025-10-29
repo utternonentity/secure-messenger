@@ -27,6 +27,7 @@ func EnsureSeedData(path string) error {
 			UserID:   "user-0001",
 			Nickname: "ironwarden",
 			Roles:    []string{"admin", "user"},
+			Password: "swordfish",
 			Devices: map[string]storedDevice{
 				"device-ivan-laptop": {
 					DeviceID:    "device-ivan-laptop",
@@ -46,6 +47,7 @@ func EnsureSeedData(path string) error {
 			UserID:   "user-0002",
 			Nickname: "nova",
 			Roles:    []string{"user"},
+			Password: "starlight",
 			Devices: map[string]storedDevice{
 				"device-maria-laptop": {
 					DeviceID:    "device-maria-laptop",

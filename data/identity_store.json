@@ -1,62 +1,85 @@
 {
-  "users": [
-    {
-      "user_id": "user-0001",
-      "nickname": "ironwarden",
-      "roles": [
-        "admin",
-        "user"
-      ],
-      "devices": {
-        "device-ivan-laptop": {
-          "device_id": "device-ivan-laptop",
-          "cert_der": "RGV2aWNlIDAxIHByaW1hcnk=",
-          "revoked": false,
-          "updated_unix": 1709484000
+    "users": [
+        {
+            "devices": {
+                "device-ivan-laptop": {
+                    "cert_der": "RGV2aWNlIDAxIHByaW1hcnk=",
+                    "device_id": "device-ivan-laptop",
+                    "revoked": false,
+                    "updated_unix": 1709484000
+                },
+                "device-ivan-phone": {
+                    "cert_der": "SXZhbiBwaG9uZQ==",
+                    "device_id": "device-ivan-phone",
+                    "revoked": false,
+                    "updated_unix": 1709484000
+                }
+            },
+            "nickname": "ironwarden",
+            "password": "swordfish",
+            "roles": [
+                "admin",
+                "user"
+            ],
+            "user_id": "user-0001"
         },
-        "device-ivan-phone": {
-          "device_id": "device-ivan-phone",
-          "cert_der": "SXZhbiBwaG9uZQ==",
-          "revoked": false,
-          "updated_unix": 1709484000
-        }
-      }
-    },
-    {
-      "user_id": "user-0002",
-      "nickname": "nova",
-      "roles": [
-        "user"
-      ],
-      "devices": {
-        "device-maria-laptop": {
-          "device_id": "device-maria-laptop",
-          "cert_der": "TWFyaWEgbGFwdG9w",
-          "revoked": false,
-          "updated_unix": 1709484000
+        {
+            "devices": {
+                "device-maria-laptop": {
+                    "cert_der": "TWFyaWEgbGFwdG9w",
+                    "device_id": "device-maria-laptop",
+                    "revoked": false,
+                    "updated_unix": 1709484000
+                },
+                "device-maria-mobile": {
+                    "cert_der": "TWFyaWEgbW9iaWxl",
+                    "device_id": "device-maria-mobile",
+                    "revoked": false,
+                    "updated_unix": 1709484000
+                }
+            },
+            "nickname": "nova",
+            "password": "starlight",
+            "roles": [
+                "user"
+            ],
+            "user_id": "user-0002"
         },
-        "device-maria-mobile": {
-          "device_id": "device-maria-mobile",
-          "cert_der": "TWFyaWEgbW9iaWxl",
-          "revoked": false,
-          "updated_unix": 1709484000
+        {
+            "devices": {
+                "device-oleg-desktop": {
+                    "cert_der": "T2xlZyBkZXNrdG9w",
+                    "device_id": "device-oleg-desktop",
+                    "revoked": false,
+                    "updated_unix": 1709484000
+                }
+            },
+            "nickname": "bytefox",
+            "password": "cipherfox",
+            "roles": [
+                "user"
+            ],
+            "user_id": "user-0003"
+        },
+        {
+            "devices": {
+            },
+            "nickname": "yves",
+            "password": "04072003",
+            "roles": [
+                "user"
+            ],
+            "user_id": "local-yves"
+        },
+        {
+            "devices": {
+            },
+            "nickname": "utternonentity",
+            "password": "04072003",
+            "roles": [
+                "user"
+            ],
+            "user_id": "local-utternonentity"
         }
-      }
-    },
-    {
-      "user_id": "user-0003",
-      "nickname": "bytefox",
-      "roles": [
-        "user"
-      ],
-      "devices": {
-        "device-oleg-desktop": {
-          "device_id": "device-oleg-desktop",
-          "cert_der": "T2xlZyBkZXNrdG9w",
-          "revoked": false,
-          "updated_unix": 1709484000
-        }
-      }
-    }
-  ]
+    ]
 }
