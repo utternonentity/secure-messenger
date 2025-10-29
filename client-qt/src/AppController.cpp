@@ -26,6 +26,26 @@ QString encodedCertificate(const QString &deviceId, const QString &label)
     const QByteArray raw = QStringLiteral("%1:%2").arg(deviceId, label).toUtf8();
     return raw.toBase64();
 }
+
+QString canonicalDirectConversationId(const QString &first, const QString &second)
+{
+    const QString left = first.trimmed();
+    const QString right = second.trimmed();
+    if (left.isEmpty() || right.isEmpty() || left == right) {
+        return {};
+    }
+
+    QStringList ordered{left, right};
+    std::sort(ordered.begin(), ordered.end(), [](const QString &lhs, const QString &rhs) {
+        const int insensitive = QString::compare(lhs, rhs, Qt::CaseInsensitive);
+        if (insensitive == 0) {
+            return lhs < rhs;
+        }
+        return insensitive < 0;
+    });
+
+    return QStringLiteral("dm-%1-%2").arg(ordered.at(0), ordered.at(1));
+}
 }
 
 AppController::AppController(QObject *parent)
@@ -138,31 +158,25 @@ void AppController::startConversationWith(const QString &userId)
         return;
     }
 
-    if (trimmed == m_authenticatedUser.userId) {
+    const QString myId = m_authenticatedUser.userId.trimmed();
+    if (myId.isEmpty()) {
+        appendLog(QStringLiteral("Messaging.Direct -> профиль не активирован"));
+        return;
+    }
+
+    if (trimmed == myId) {
         appendLog(QStringLiteral("Messaging.Direct -> попытка открыть чат с самим собой отклонена"));
         return;
     }
 
-    const QString directChannel = QStringLiteral("dm-%1-%2").arg(m_authenticatedUser.userId, trimmed);
-    const bool alreadyExists = m_conversations.contains(directChannel);
+    const QString directChannel = canonicalDirectConversationId(trimmed, myId);
+    if (directChannel.isEmpty()) {
+        appendLog(QStringLiteral("Messaging.Direct -> не удалось вычислить идентификатор канала"));
+        return;
+    }
 
     setCurrentConversation(directChannel);
     appendLog(QStringLiteral("Messaging.Direct -> активирован канал %1").arg(directChannel));
-
-    if (!alreadyExists) {
-        const User *user = findUser(trimmed);
-        const QString partnerName = user ? user->nickname : trimmed;
-        addMessage(directChannel,
-                   QStringLiteral("Сервер"),
-                   QStringLiteral("Создан защищённый канал с %1").arg(partnerName),
-                   false);
-        if (user) {
-            addMessage(directChannel,
-                       partnerName,
-                       QStringLiteral("Привет! Готов(а) к общению."),
-                       false);
-        }
-    }
 }
 
 void AppController::rotateDevice(const QString &userId, const QString &deviceId)
