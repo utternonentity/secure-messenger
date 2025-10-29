@@ -2,6 +2,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 import QtQuick.Layouts 1.15
+import QtQml 2.15
 
 ApplicationWindow {
     id: window
@@ -75,6 +76,202 @@ ApplicationWindow {
     StackLayout {
         anchors.fill: parent
         currentIndex: App && App.registered ? 1 : 0
+
+        Item {
+            anchors.fill: parent
+
+            Rectangle {
+                anchors.centerIn: parent
+                width: Math.min(window.width - 120, 480)
+                color: panelColor
+                radius: 16
+                border.color: panelBorder
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 28
+                    spacing: 18
+
+                    Label {
+                        text: qsTr("Добро пожаловать в Secure Messenger")
+                        font.pixelSize: 22
+                        font.bold: true
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Label {
+                        text: qsTr("Чтобы подключиться, зарегистрируйте новый профиль. Укажите желаемый никнейм — сервер выдаст уникальный идентификатор.")
+                        color: subtleText
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+
+                    TextField {
+                        id: registrationNickname
+                        Layout.fillWidth: true
+                        placeholderText: qsTr("Никнейм")
+                        selectByMouse: true
+                        onAccepted: registerButton.clicked()
+                        Component.onCompleted: {
+                            if (!App || !App.registered)
+                                forceActiveFocus()
+                        }
+
+                        Connections {
+                            target: App
+                            function onRegistrationChanged() {
+                                if (App && !App.registered)
+                                    registrationNickname.forceActiveFocus()
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 12
+
+                        Button {
+                            id: registerButton
+                            text: qsTr("Зарегистрироваться")
+                            icon.name: "account-circle"
+                            enabled: registrationNickname.text.trim().length > 0 && App && App.completeRegistration
+                            onClicked: {
+                                if (!enabled)
+                                    return
+                                App.completeRegistration(registrationNickname.text)
+                                registrationNickname.text = ""
+                            }
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        Button {
+                            text: qsTr("Обновить справочник")
+                            icon.name: "reload"
+                            enabled: App && App.refreshUsers
+                            onClicked: App.refreshUsers()
+                        }
+                    }
+
+                    Label {
+                        text: qsTr("Доступные пользователи из локального справочника")
+                        font.pixelSize: 14
+                        font.bold: true
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 200
+                        radius: 10
+                        color: "#111827"
+                        border.color: panelBorder
+
+                        ListView {
+                            id: directoryPreview
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            clip: true
+                            spacing: 6
+                            model: (App && App.userList) ? App.userList : []
+                            boundsBehavior: Flickable.StopAtBounds
+                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                            delegate: Item {
+                                width: directoryPreview.width
+                                property var entry: modelData
+                                property string userId: String(entry["userId"] || "")
+                                property bool validEntry: userId.length > 0
+                                implicitHeight: validEntry ? previewContent.implicitHeight + 12 : 0
+                                visible: validEntry
+
+                                Rectangle {
+                                    id: previewContent
+                                    anchors.fill: parent
+                                    anchors.margins: 4
+                                    radius: 8
+                                    color: "#1f2937"
+                                    border.color: panelBorder
+
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 10
+                                        spacing: 2
+
+                                        Label {
+                                            text: String(entry["nickname"] || userId)
+                                            font.pixelSize: 14
+                                            font.bold: true
+                                        }
+
+                                        Label {
+                                            text: userId
+                                            font.pixelSize: 12
+                                            color: subtleText
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        ColumnLayout {
+                            anchors.centerIn: parent
+                            width: parent.width - 32
+                            spacing: 6
+                            visible: directoryPreview.count === 0
+
+                            Label {
+                                text: qsTr("Справочник пуст. Нажмите \"Обновить справочник\" или зарегистрируйтесь, чтобы получить список пользователей.")
+                                color: subtleText
+                                wrapMode: Text.WordWrap
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+                        }
+                    }
+
+                    Label {
+                        text: qsTr("Журнал событий")
+                        font.pixelSize: 14
+                        font.bold: true
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 160
+                        radius: 10
+                        color: "#111827"
+                        border.color: panelBorder
+
+                        ListView {
+                            id: preregLog
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            clip: true
+                            spacing: 6
+                            model: (App && App.serverLog) ? App.serverLog : []
+                            boundsBehavior: Flickable.StopAtBounds
+                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                            delegate: Item {
+                                width: preregLog.width
+                                implicitHeight: logText.implicitHeight + 4
+
+                                Label {
+                                    id: logText
+                                    anchors.fill: parent
+                                    anchors.margins: 2
+                                    text: String(modelData)
+                                    font.family: "monospace"
+                                    font.pixelSize: 12
+                                    color: "#d1d5db"
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         Item {
             Layout.fillWidth: true
@@ -465,10 +662,11 @@ ApplicationWindow {
         modal: true
         x: (window.width - width) / 2
         y: (window.height - height) / 2
-        width: Math.min(360, window.width - 80)
+        width: Math.min(460, window.width - 80)
         standardButtons: Dialog.NoButton
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
         title: qsTr("Новый чат")
+        property string selectedUserId: ""
 
         onAccepted: {
             const trimmed = newChatField.text.trim()
@@ -476,7 +674,10 @@ ApplicationWindow {
                 App.startConversationWith(trimmed)
         }
 
-        onClosed: newChatField.text = ""
+        onClosed: {
+            newChatField.text = ""
+            newChatDialog.selectedUserId = ""
+        }
 
         contentItem: ColumnLayout {
             anchors.fill: parent
@@ -484,7 +685,7 @@ ApplicationWindow {
             spacing: 12
 
             Label {
-                text: qsTr("Введите идентификатор пользователя для начала диалога")
+                text: qsTr("Введите идентификатор пользователя или выберите запись из справочника")
                 wrapMode: Text.WordWrap
             }
 
@@ -496,6 +697,86 @@ ApplicationWindow {
                 onAccepted: {
                     if (text.trim().length > 0)
                         newChatDialog.accept()
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 220
+                radius: 10
+                color: "#111827"
+                border.color: panelBorder
+
+                ListView {
+                    id: directoryList
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    clip: true
+                    spacing: 8
+                    model: (App && App.userList) ? App.userList : []
+                    boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                    delegate: Rectangle {
+                        width: directoryList.width
+                        property var entry: modelData
+                        property string userId: String(entry["userId"] || "")
+                        property string nickname: String(entry["nickname"] || userId)
+                        property string currentUser: String(App && App.authInfo ? App.authInfo.userId : "")
+                        visible: userId.length > 0 && userId !== currentUser
+                        implicitHeight: visible ? delegateContent.implicitHeight + 12 : 0
+                        radius: 8
+                        border.width: newChatDialog.selectedUserId === userId ? 2 : 1
+                        border.color: newChatDialog.selectedUserId === userId ? Material.accent : panelBorder
+                        color: newChatDialog.selectedUserId === userId ? "#1f2937" : "transparent"
+
+                        ColumnLayout {
+                            id: delegateContent
+                            anchors.fill: parent
+                            anchors.margins: 10
+                            spacing: 2
+
+                            Label {
+                                text: nickname
+                                font.pixelSize: 15
+                                font.bold: true
+                                elide: Text.ElideRight
+                            }
+
+                            Label {
+                                text: userId
+                                color: subtleText
+                                font.pixelSize: 12
+                                elide: Text.ElideRight
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                if (!visible)
+                                    return
+                                newChatDialog.selectedUserId = userId
+                                newChatField.text = userId
+                                newChatField.selectAll()
+                                newChatDialog.accept()
+                            }
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    anchors.centerIn: parent
+                    width: parent.width - 32
+                    spacing: 6
+                    visible: directoryList.count === 0 || directoryList.contentHeight === 0
+
+                    Label {
+                        text: qsTr("Справочник пуст. Нажмите \"Обновить справочник\" в окне или на панели инструментов.")
+                        color: subtleText
+                        wrapMode: Text.WordWrap
+                        horizontalAlignment: Text.AlignHCenter
+                    }
                 }
             }
 
@@ -531,7 +812,11 @@ ApplicationWindow {
         }
 
         Component.onCompleted: newChatField.text = ""
-        onOpened: newChatField.forceActiveFocus()
+        onOpened: {
+            if (App && App.refreshUsers)
+                App.refreshUsers()
+            newChatField.forceActiveFocus()
+        }
     }
 
     Connections {
