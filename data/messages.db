@@ -119,6 +119,46 @@
       "sender_device_id": "device-ivan-laptop",
       "sent_unix_sec": 1761732639,
       "ciphertext_b64": "a2prIHpuag=="
+    },
+    {
+      "id": 16,
+      "conversation_id": "corp-secure-room",
+      "sender_user_id": "user-0001",
+      "sender_device_id": "device-ivan-laptop",
+      "sent_unix_sec": 1761733437,
+      "ciphertext_b64": "0YfRgtC+INC30LAg0YXRg9C5"
+    },
+    {
+      "id": 17,
+      "conversation_id": "corp-secure-room",
+      "sender_user_id": "user-0003",
+      "sender_device_id": "device-oleg-desktop",
+      "sent_unix_sec": 1761733461,
+      "ciphertext_b64": "0YLQsNC6INC90YPQutCw"
+    },
+    {
+      "id": 18,
+      "conversation_id": "corp-secure-room",
+      "sender_user_id": "user-0003",
+      "sender_device_id": "device-oleg-desktop",
+      "sent_unix_sec": 1761733470,
+      "ciphertext_b64": "0Y8g0LbQtSDQv9C+0LQg0LTRgNGD0LPQuNC8INC/0L7Qu9GM0LfQvtCy0LDRgtC10LvQtdC8INC30LDRiNC10LsuLg=="
+    },
+    {
+      "id": 19,
+      "conversation_id": "corp-secure-room",
+      "sender_user_id": "user-0003",
+      "sender_device_id": "device-oleg-desktop",
+      "sent_unix_sec": 1761733501,
+      "ciphertext_b64": "0Lgg0YfRgtC+INGN0YLQviDQu9C+0Ls="
+    },
+    {
+      "id": 20,
+      "conversation_id": "corp-secure-room",
+      "sender_user_id": "user-0003",
+      "sender_device_id": "device-oleg-desktop",
+      "sent_unix_sec": 1761733558,
+      "ciphertext_b64": "0Lw/"
     }
   ]
 }

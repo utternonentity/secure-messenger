@@ -822,24 +822,99 @@ bool AppController::loadMessageHistory(const QString &path)
 
 QString AppController::resolveDataDirectory() const
 {
+    const auto hasDataArtifacts = [](const QDir &dir) {
+        return dir.exists(QStringLiteral("identity_store.json"))
+               || dir.exists(QStringLiteral("messages.db"));
+    };
+
+    const auto canonicalIfValid = [&](const QString &path) -> QString {
+        const QString trimmed = path.trimmed();
+        if (trimmed.isEmpty()) {
+            return {};
+        }
+
+        QFileInfo info(trimmed);
+        if (!info.exists()) {
+            return {};
+        }
+
+        QDir dir(info.isDir() ? info.absoluteFilePath() : info.absolutePath());
+        if (hasDataArtifacts(dir)) {
+            return dir.absolutePath();
+        }
+
+        if (!info.isDir()) {
+            const QString baseName = info.fileName();
+            if (baseName == QStringLiteral("identity_store.json") || baseName == QStringLiteral("messages.db")) {
+                return dir.absolutePath();
+            }
+        }
+
+        QDir nested(dir);
+        if (nested.cd(QStringLiteral("data")) && hasDataArtifacts(nested)) {
+            return nested.absolutePath();
+        }
+
+        return {};
+    };
+
+    const auto searchParents = [&](const QString &start) -> QString {
+        const QString trimmed = start.trimmed();
+        if (trimmed.isEmpty()) {
+            return {};
+        }
+
+        QDir probe(trimmed);
+        QSet<QString> visited;
+        while (true) {
+            const QString absolute = probe.absolutePath();
+            if (!visited.contains(absolute)) {
+                visited.insert(absolute);
+                const QString match = canonicalIfValid(absolute);
+                if (!match.isEmpty()) {
+                    return match;
+                }
+            }
+
+            if (!probe.cdUp()) {
+                break;
+            }
+        }
+
+        return {};
+    };
+
     const QString envPath = qEnvironmentVariable("SM_DATA_DIR").trimmed();
-    if (!envPath.isEmpty()) {
-        return QDir(envPath).absolutePath();
+    if (const QString envMatch = canonicalIfValid(envPath); !envMatch.isEmpty()) {
+        return envMatch;
     }
 
-    const QStringList candidates = {QStringLiteral("../data"), QStringLiteral("../../data"), QStringLiteral("data")};
+    const QStringList explicitCandidates = {QStringLiteral("data"),
+                                            QStringLiteral("../data"),
+                                            QStringLiteral("../../data")};
     QDir base(QCoreApplication::applicationDirPath());
-    for (const QString &candidate : candidates) {
+    for (const QString &candidate : explicitCandidates) {
         QDir probe(base);
         if (probe.cd(candidate)) {
-            return probe.absolutePath();
+            const QString match = canonicalIfValid(probe.absolutePath());
+            if (!match.isEmpty()) {
+                return match;
+            }
         }
     }
 
-    QDir current(QDir::currentPath());
-    if (current.cd(QStringLiteral("data"))) {
-        return current.absolutePath();
+    const QStringList roots = {QCoreApplication::applicationDirPath(), QDir::currentPath()};
+    for (const QString &root : roots) {
+        const QString match = searchParents(root);
+        if (!match.isEmpty()) {
+            return match;
+        }
     }
+
+    if (const QString fallback = canonicalIfValid(QDir::currentPath()); !fallback.isEmpty()) {
+        return fallback;
+    }
+
     return QDir::currentPath();
 }
 
