@@ -490,29 +490,31 @@ void AppController::applyRegisteredIdentity()
     const QString trimmedUserId = m_registeredUserId.trimmed();
     const QString trimmedNickname = m_registeredNickname.trimmed();
 
-    if (!trimmedUserId.isEmpty()) {
-        m_authenticatedUser.userId = trimmedUserId;
-    }
-    if (!trimmedNickname.isEmpty()) {
-        m_authenticatedUser.nickname = trimmedNickname;
-    }
-
     if (trimmedUserId.isEmpty()) {
         return;
     }
 
-    for (User &user : m_directory) {
-        if (user.userId == trimmedUserId) {
-            if (!trimmedNickname.isEmpty()) {
-                user.nickname = trimmedNickname;
-            }
-            return;
+    if (User *existing = findUser(trimmedUserId)) {
+        if (!trimmedNickname.isEmpty()) {
+            existing->nickname = trimmedNickname;
+        } else if (existing->nickname.isEmpty()) {
+            existing->nickname = trimmedUserId;
         }
+
+        m_authenticatedUser = *existing;
+        if (!trimmedNickname.isEmpty()) {
+            m_authenticatedUser.nickname = trimmedNickname;
+        } else if (m_authenticatedUser.nickname.isEmpty()) {
+            m_authenticatedUser.nickname = trimmedUserId;
+        }
+        return;
     }
 
-    User user = m_authenticatedUser;
+    User user;
     user.userId = trimmedUserId;
-    user.nickname = trimmedNickname.isEmpty() ? user.userId : trimmedNickname;
+    user.nickname = trimmedNickname.isEmpty() ? trimmedUserId : trimmedNickname;
+
+    m_authenticatedUser = user;
     m_directory.prepend(user);
 }
 
