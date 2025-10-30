@@ -54,9 +54,9 @@ powershell -ExecutionPolicy Bypass -File build-scripts/gen_proto.ps1
    openssl x509 -req -in certs/server.csr -CA certs/rootCA.pem -CAkey certs/rootCA.key -CAcreateserial \
      -out certs/server.pem -days 365 -sha256 -extensions req_ext -extfile certs/server.cnf
    ```
-3. Выпустите сертификаты устройств. Для каждого устройства нужен SAN `sm://user/<id>` и `sm://device/<id>`:
+3. Выпустите клиентский сертификат пользователя. Он понадобится при регистрации и для последующих подключений по mTLS:
    ```bash
-   cat > certs/device-laptop.cnf <<'EOF'
+   cat > certs/user-alice.cnf <<'EOF'
    [req]
    default_bits = 4096
    prompt = no
@@ -65,48 +65,21 @@ powershell -ExecutionPolicy Bypass -File build-scripts/gen_proto.ps1
    distinguished_name = dn
 
    [dn]
-   CN = Иван Петров (ноутбук)
+   CN = Alice Doe
 
    [req_ext]
-   subjectAltName = @alt_names
-
-   [alt_names]
-   URI.1 = sm://user/user-ivan
-   URI.2 = sm://device/device-laptop
+   subjectAltName = email:alice@example.org
    EOF
 
-   openssl genrsa -out certs/device-laptop.key 4096
-   openssl req -new -key certs/device-laptop.key -out certs/device-laptop.csr -config certs/device-laptop.cnf
-   openssl x509 -req -in certs/device-laptop.csr -CA certs/rootCA.pem -CAkey certs/rootCA.key -CAcreateserial \
-     -out certs/device-laptop.pem -days 365 -sha256 -extensions req_ext -extfile certs/device-laptop.cnf
-
-   # Второе устройство (например, смартфон): поменяйте идентификаторы и CN
-   cat > certs/device-phone.cnf <<'EOF'
-   [req]
-   default_bits = 4096
-   prompt = no
-   default_md = sha256
-   req_extensions = req_ext
-   distinguished_name = dn
-
-   [dn]
-   CN = Иван Петров (смартфон)
-
-   [req_ext]
-   subjectAltName = @alt_names
-
-   [alt_names]
-   URI.1 = sm://user/user-ivan
-   URI.2 = sm://device/device-phone
-   EOF
-
-   openssl genrsa -out certs/device-phone.key 4096
-   openssl req -new -key certs/device-phone.key -out certs/device-phone.csr -config certs/device-phone.cnf
-   openssl x509 -req -in certs/device-phone.csr -CA certs/rootCA.pem -CAkey certs/rootCA.key -CAcreateserial \
-     -out certs/device-phone.pem -days 365 -sha256 -extensions req_ext -extfile certs/device-phone.cnf
+   openssl genrsa -out certs/user-alice.key 4096
+   openssl req -new -key certs/user-alice.key -out certs/user-alice.csr -config certs/user-alice.cnf
+   openssl x509 -req -in certs/user-alice.csr -CA certs/rootCA.pem -CAkey certs/rootCA.key -CAcreateserial \
+     -out certs/user-alice.pem -days 365 -sha256 -extensions req_ext -extfile certs/user-alice.cnf
    ```
 
-Эти шаги можно повторить для любого количества устройств, меняя идентификаторы и CN. Файлы `*.pem` копируются на соответствующие узлы, а `client_ca.pem` устанавливается как доверенный корень на сервере.
+Эти шаги можно повторить для любого числа пользователей, меняя CN и дополнительные поля. Файлы `*.pem` копируются на соответствующие
+ узлы, а `client_ca.pem` устанавливается как доверенный корень на сервере. При регистрации новый пользователь передает DER-кодированный
+ сертификат в base64 (см. раздел про HTTP API ниже).
 
 ## Сборка и запуск сервера
 ```bash
@@ -160,11 +133,25 @@ HTTP интерфейс позволяет интегрировать любые
   {
     "conversation_id": "corp-secure-room",
     "sender_user_id": "user-0001",
-    "sender_device_id": "device-ivan-laptop",
     "text": "Привет!"
   }
   ```
   В ответ сервер возвращает идентификатор сохранённого сообщения и отметку времени.
+
+### HTTP API регистрации
+Для добавления нового пользователя отправьте POST-запрос на `/api/auth/register` с JSON:
+```json
+{
+  "nickname": "alice",
+  "certificate": "<DER сертификата в base64>"
+}
+```
+Получить base64-строку можно так:
+```bash
+openssl x509 -in certs/user-alice.pem -outform DER | base64 -w0
+```
+В ответе вернётся `user_id`, присвоенный сервером. Этот же сертификат используется при mTLS-подключении.
+
 
 ### Примеры для gRPC (опционально)
 Для глубокой интеграции остаётся доступен исходный gRPC интерфейс. Ниже приведены команды `grpcurl` для тестирования `Pull`/`Send` в обход HTTP API.

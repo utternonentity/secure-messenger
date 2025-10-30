@@ -2,6 +2,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 import QtQuick.Layouts 1.15
+import QtQml 2.15
 
 ApplicationWindow {
     id: window
@@ -63,6 +64,12 @@ ApplicationWindow {
                 icon.name: "reload"
                 onClicked: if (App && App.refreshUsers) App.refreshUsers()
             }
+
+            Button {
+                text: qsTr("Сменить пользователя")
+                icon.name: "logout"
+                onClicked: if (App && App.resetRegistration) App.resetRegistration()
+            }
         }
     }
 
@@ -74,117 +81,253 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
 
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 40
-                spacing: 24
+            Rectangle {
+                anchors.centerIn: parent
+                width: Math.min(window.width - 120, 480)
+                color: panelColor
+                radius: 16
+                border.color: panelBorder
 
-                Pane {
-                    Layout.fillWidth: true
-                    padding: 24
-                    background: Rectangle {
-                        color: panelColor
-                        radius: 16
-                        border.color: panelBorder
+                ColumnLayout {
+                    id: authForm
+                    anchors.fill: parent
+                    anchors.margins: 28
+                    spacing: 18
+
+                    property bool registrationMode: false
+                    property string formError: ""
+
+                    function performPrimaryAction() {
+                        if (!App) {
+                            formError = qsTr("Сервис недоступен");
+                            return;
+                        }
+                        var result = registrationMode
+                                ? (App.completeRegistration ? App.completeRegistration(authNickname.text, authPassword.text) : qsTr("Сервис недоступен"))
+                                : (App.authenticate ? App.authenticate(authNickname.text, authPassword.text) : qsTr("Сервис недоступен"));
+                        if (result && result.length > 0) {
+                            formError = result;
+                        } else {
+                            formError = "";
+                            authPassword.text = "";
+                        }
                     }
 
-                    ColumnLayout {
-                        anchors.fill: parent
+                    Label {
+                        text: authForm.registrationMode ? qsTr("Создайте новый профиль Secure Messenger")
+                                                         : qsTr("Добро пожаловать в Secure Messenger")
+                        font.pixelSize: 22
+                        font.bold: true
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Label {
+                        text: authForm.registrationMode
+                              ? qsTr("Придумайте уникальный никнейм и пароль, чтобы зарегистрироваться.")
+                              : qsTr("Введите свой никнейм и пароль для входа в систему.")
+                        color: subtleText
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+
+                    TextField {
+                        id: authNickname
+                        Layout.fillWidth: true
+                        placeholderText: qsTr("Никнейм")
+                        selectByMouse: true
+                        onAccepted: authPassword.forceActiveFocus()
+                        Component.onCompleted: {
+                            if (!App || !App.registered)
+                                forceActiveFocus()
+                        }
+
+                        Connections {
+                            target: App
+                            function onRegistrationChanged() {
+                                if (App && !App.registered) {
+                                    authNickname.forceActiveFocus()
+                                    authPassword.text = ""
+                                    authForm.formError = ""
+                                }
+                            }
+                        }
+                    }
+
+                    TextField {
+                        id: authPassword
+                        Layout.fillWidth: true
+                        placeholderText: qsTr("Пароль")
+                        echoMode: TextInput.Password
+                        selectByMouse: true
+                        onAccepted: authForm.performPrimaryAction()
+                    }
+
+                    Label {
+                        visible: authForm.formError.length > 0
+                        text: authForm.formError
+                        color: "#f87171"
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
                         spacing: 12
 
-                        Label {
-                            text: qsTr("Secure Messenger Demo")
-                            font.pixelSize: 22
-                            font.bold: true
+                        Button {
+                            id: primaryAction
+                            text: authForm.registrationMode ? qsTr("Зарегистрироваться") : qsTr("Войти")
+                            icon.name: authForm.registrationMode ? "account-circle" : "login"
+                            enabled: authNickname.text.trim().length > 0 && authPassword.text.length > 0 && App && (authForm.registrationMode ? App.completeRegistration : App.authenticate)
+                            onClicked: authForm.performPrimaryAction()
                         }
 
-                        Label {
-                            Layout.fillWidth: true
-                            wrapMode: Text.WordWrap
-                            color: subtleText
-                            text: qsTr("Демонстрационный клиент защищённого корпоративного мессенджера. Использует mTLS, каталоги пользователей и репликацию переписки для изолированной тестовой среды.")
-                        }
+                        Item { Layout.fillWidth: true }
 
-                        Label {
-                            Layout.fillWidth: true
-                            wrapMode: Text.WordWrap
-                            color: subtleText
-                            text: qsTr("Перед началом работы укажите никнейм, под которым устройство будет входить в систему.")
+                        Button {
+                            text: qsTr("Обновить справочник")
+                            icon.name: "reload"
+                            enabled: App && App.refreshUsers
+                            onClicked: App.refreshUsers()
                         }
                     }
-                }
 
-                Pane {
-                    Layout.fillWidth: true
-                    padding: 24
-                    background: Rectangle {
-                        color: panelColor
-                        radius: 16
+                    Item {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: toggleLabel.implicitHeight + 8
+
+                        Label {
+                            id: toggleLabel
+                            anchors.centerIn: parent
+                            text: authForm.registrationMode ? qsTr("Уже есть аккаунт? Войдите.")
+                                                           : qsTr("Нет аккаунта? Зарегистрируйтесь.")
+                            color: subtleText
+                            font.pixelSize: 13
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                authForm.registrationMode = !authForm.registrationMode
+                                authForm.formError = ""
+                                authPassword.text = ""
+                                authNickname.forceActiveFocus()
+                            }
+                        }
+                    }
+
+                    Label {
+                        text: qsTr("Доступные пользователи из локального справочника")
+                        font.pixelSize: 14
+                        font.bold: true
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 200
+                        radius: 10
+                        color: "#111827"
                         border.color: panelBorder
-                    }
 
-                    ColumnLayout {
-                        id: registrationForm
-                        anchors.fill: parent
-                        spacing: 16
+                        ListView {
+                            id: directoryPreview
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            clip: true
+                            spacing: 6
+                            model: (App && App.userList) ? App.userList : []
+                            boundsBehavior: Flickable.StopAtBounds
+                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-                        function submitRegistration() {
-                            const trimmed = nicknameField.text.trim();
-                            if (trimmed.length < 3) {
-                                nicknameField.forceActiveFocus();
-                                return;
+                            delegate: Item {
+                                width: directoryPreview.width
+                                property var entry: modelData
+                                property string userId: String(entry["userId"] || "")
+                                property string nickname: String(entry["nickname"] || "")
+                                property bool validEntry: userId.length > 0 && nickname.length > 0
+                                implicitHeight: validEntry ? previewContent.implicitHeight + 12 : 0
+                                visible: validEntry
+
+                                Rectangle {
+                                    id: previewContent
+                                    anchors.fill: parent
+                                    anchors.margins: 4
+                                    radius: 8
+                                    color: "#1f2937"
+                                    border.color: panelBorder
+
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 10
+                                        spacing: 2
+
+                                        Label {
+                                            text: nickname
+                                            font.pixelSize: 14
+                                            font.bold: true
+                                        }
+                                    }
+                                }
                             }
-                            if (App && App.completeRegistration)
-                                App.completeRegistration(trimmed);
                         }
 
-                        Label {
-                            text: qsTr("Регистрация устройства")
-                            font.pixelSize: 18
-                            font.bold: true
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            wrapMode: Text.WordWrap
-                            color: subtleText
-                            text: qsTr("Никнейм отображается для остальных участников и сохраняется локально на этом устройстве.")
-                        }
-
-                        TextField {
-                            id: nicknameField
-                            Layout.fillWidth: true
-                            placeholderText: qsTr("Ваш никнейм")
-                            selectByMouse: true
-                            focus: true
-                            onAccepted: registrationForm.submitRegistration()
-                            Component.onCompleted: forceActiveFocus()
-                        }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 12
-
-                            Button {
-                                id: registerButton
-                                text: qsTr("Зарегистрироваться")
-                                icon.name: "user"
-                                enabled: nicknameField.text.trim().length >= 3
-                                onClicked: registrationForm.submitRegistration()
-                            }
+                        ColumnLayout {
+                            anchors.centerIn: parent
+                            width: parent.width - 32
+                            spacing: 6
+                            visible: directoryPreview.count === 0
 
                             Label {
-                                Layout.fillWidth: true
-                                wrapMode: Text.WordWrap
+                                text: qsTr("Справочник пуст. Нажмите \"Обновить справочник\" или зарегистрируйтесь, чтобы получить список пользователей.")
                                 color: subtleText
-                                visible: nicknameField.text.trim().length < 3
-                                text: qsTr("Минимум 3 символа. Вы всегда можете изменить никнейм в настройках устройства.")
+                                wrapMode: Text.WordWrap
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+                        }
+                    }
+
+                    Label {
+                        text: qsTr("Журнал событий")
+                        font.pixelSize: 14
+                        font.bold: true
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 160
+                        radius: 10
+                        color: "#111827"
+                        border.color: panelBorder
+
+                        ListView {
+                            id: preregLog
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            clip: true
+                            spacing: 6
+                            model: (App && App.serverLog) ? App.serverLog : []
+                            boundsBehavior: Flickable.StopAtBounds
+                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                            delegate: Item {
+                                width: preregLog.width
+                                implicitHeight: logText.implicitHeight + 4
+
+                                Label {
+                                    id: logText
+                                    anchors.fill: parent
+                                    anchors.margins: 2
+                                    text: String(modelData)
+                                    font.family: "monospace"
+                                    font.pixelSize: 12
+                                    color: "#d1d5db"
+                                    wrapMode: Text.WordWrap
+                                }
                             }
                         }
                     }
                 }
-
-                Item { Layout.fillHeight: true }
             }
         }
 
@@ -192,156 +335,42 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
 
-            ColumnLayout {
+            SplitView {
                 anchors.fill: parent
-                anchors.margins: 20
-                spacing: 18
-        
+                orientation: Qt.Horizontal
+                handle: Rectangle {
+                    implicitWidth: 18
+                    color: "transparent"
 
-        SplitView {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            orientation: Qt.Horizontal
-            handle: Rectangle {
-                implicitWidth: 18
-                color: "transparent"
-
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 2
-                    height: parent.height - 12
-                    radius: 1
-                    color: panelBorder
-                }
-            }
-
-            Item {
-                SplitView.minimumWidth: 320
-                SplitView.preferredWidth: 380
-                SplitView.maximumWidth: 460
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    spacing: 16
-
-                    Pane {
-                        Layout.fillWidth: true
-                        padding: 16
-                        background: Rectangle {
-                            color: panelColor
-                            radius: 12
-                            border.color: panelBorder
-                        }
-
-                        ColumnLayout {
-                            anchors.fill: parent
-                            spacing: 12
-
-                            RowLayout {
-                                Layout.fillWidth: true
-
-                                Label {
-                                    text: qsTr("Идентификация")
-                                    font.bold: true
-                                    font.pixelSize: 16
-                                }
-
-                                Item { Layout.fillWidth: true }
-
-                                Button {
-                                    text: qsTr("Сменить пользователя")
-                                    visible: App && App.registered
-                                    icon.name: "logout"
-                                    onClicked: if (App && App.resetRegistration) App.resetRegistration()
-                                }
-                            }
-
-                            Label {
-                                text: qsTr("%1 (%2)")
-                                          .arg(App && App.authInfo ? App.authInfo.nickname || "" : "")
-                                          .arg(App && App.authInfo ? App.authInfo.userId || "" : "")
-                                color: "white"
-                                font.pixelSize: 20
-                                wrapMode: Text.WordWrap
-                            }
-
-                            Flow {
-                                width: parent.width
-                                spacing: 6
-                                visible: App && App.authInfo && App.authInfo.roles && App.authInfo.roles.length > 0
-
-                                Repeater {
-                                    model: App && App.authInfo && App.authInfo.roles ? App.authInfo.roles : []
-
-                                    delegate: Rectangle {
-                                        radius: 14
-                                        color: "#1f2937"
-                                        border.color: panelBorder
-                                        implicitWidth: roleLabel.implicitWidth + 20
-                                        implicitHeight: roleLabel.implicitHeight + 8
-
-                                        Label {
-                                            id: roleLabel
-                                            anchors.centerIn: parent
-                                            text: String(modelData)
-                                            color: "#d1d5db"
-                                            font.pixelSize: 12
-                                        }
-                                    }
-                                }
-                            }
-
-                            Label {
-                                text: qsTr("Активное устройство: %1")
-                                          .arg(App && App.authInfo ? App.authInfo.deviceId || "" : "")
-                                color: subtleText
-                            }
-
-                            Frame {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 140
-                                padding: 0
-                                background: Rectangle {
-                                    color: "#0f172a"
-                                    radius: 8
-                                    border.color: panelBorder
-                                }
-
-                                TextArea {
-                                    anchors.fill: parent
-                                    anchors.margins: 12
-                                    readOnly: true
-                                    wrapMode: TextArea.WrapAnywhere
-                                    selectByMouse: true
-                                    font.family: "monospace"
-                                    color: "#e5e7eb"
-                                    text: String(App && App.authInfo ? App.authInfo.certificate || "" : "")
-                                    background: Rectangle { color: "transparent" }
-                                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-                                }
-                            }
-                        }
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 2
+                        height: parent.height - 12
+                        radius: 1
+                        color: panelBorder
                     }
+                }
 
-                    Pane {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        padding: 16
-                        background: Rectangle {
-                            color: panelColor
-                            radius: 12
-                            border.color: panelBorder
-                        }
+                Item {
+                    SplitView.minimumWidth: 280
+                    SplitView.preferredWidth: 340
+                    SplitView.maximumWidth: 420
+
+                    Rectangle {
+                        anchors.fill: parent
+                        color: panelColor
+                        border.color: panelBorder
 
                         ColumnLayout {
                             anchors.fill: parent
+                            anchors.margins: 16
                             spacing: 12
 
                             RowLayout {
                                 Layout.fillWidth: true
 
                                 Label {
-                                    text: qsTr("Диалоги")
+                                    text: qsTr("Активные чаты")
                                     font.bold: true
                                     font.pixelSize: 16
                                 }
@@ -349,8 +378,21 @@ ApplicationWindow {
                                 Item { Layout.fillWidth: true }
 
                                 Label {
-                                    text: qsTr("%1 чатов").arg(App && App.conversationList ? App.conversationList.length : 0)
+                                    text: qsTr("%1").arg(App && App.conversationList ? App.conversationList.length : 0)
                                     color: subtleText
+                                    font.pixelSize: 12
+                                }
+                            }
+
+                            Button {
+                                Layout.fillWidth: true
+                                text: qsTr("Новый чат")
+                                icon.name: "chat"
+                                onClicked: {
+                                    if (!App)
+                                        return
+                                    newChatField.text = ""
+                                    newChatDialog.open()
                                 }
                             }
 
@@ -435,13 +477,13 @@ ApplicationWindow {
                                     spacing: 8
 
                                     Label {
-                                        text: qsTr("Диалоги не найдены")
+                                        text: qsTr("Чатов пока нет")
                                         font.pixelSize: 16
                                         font.bold: true
                                     }
 
                                     Label {
-                                        text: qsTr("Начните разговор или выберите пользователя, чтобы создать чат.")
+                                        text: qsTr("Создайте личный чат или дождитесь входящих сообщений.")
                                         color: subtleText
                                         wrapMode: Text.WordWrap
                                         horizontalAlignment: Text.AlignHCenter
@@ -451,558 +493,209 @@ ApplicationWindow {
                             }
                         }
                     }
-
-                    Pane {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        padding: 16
-                        background: Rectangle {
-                            color: panelColor
-                            radius: 12
-                            border.color: panelBorder
-                        }
-
-                        ColumnLayout {
-                            anchors.fill: parent
-                            spacing: 12
-
-                            RowLayout {
-                                Layout.fillWidth: true
-
-                                Label {
-                                    text: qsTr("Активные пользователи")
-                                    font.bold: true
-                                    font.pixelSize: 16
-                                }
-
-                                Item { Layout.fillWidth: true }
-
-                                Label {
-                                    text: qsTr("%1 онлайн").arg(App && App.userList ? App.userList.length : 0)
-                                    color: subtleText
-                                }
-                            }
-
-                            Label {
-                                Layout.fillWidth: true
-                                wrapMode: Text.WordWrap
-                                color: subtleText
-                                visible: App && App.userList && App.userList.length > 0
-                                text: App && App.userList
-                                      ? qsTr("Directory Service вернул %1 профиля (включая ваш аккаунт).").arg(App.userList.length)
-                                      : ""
-                            }
-
-                            StackLayout {
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                currentIndex: App && App.userList && App.userList.length > 0 ? 1 : 0
-
-                                Item {
-                                    ColumnLayout {
-                                        anchors.centerIn: parent
-                                        spacing: 8
-
-                                        Label {
-                                            text: qsTr("Пока нет данных каталога")
-                                            font.pixelSize: 16
-                                            font.bold: true
-                                        }
-
-                                        Label {
-                                            text: qsTr("Нажмите \"Обновить справочник\", чтобы запросить актуальный список пользователей")
-                                            color: subtleText
-                                            wrapMode: Text.WordWrap
-                                            horizontalAlignment: Text.AlignHCenter
-                                            Layout.preferredWidth: 240
-                                        }
-                                    }
-                                }
-
-                                ListView {
-                                    Layout.fillWidth: true
-                                    Layout.fillHeight: true
-                                    clip: true
-                                    spacing: 12
-                                    model: (App && App.userList) ? App.userList : []
-                                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-
-                                    delegate: Item {
-                                        width: ListView.view.width
-                                        property var entry: modelData
-                                        readonly property bool isSelf: String(entry.userId || "") === (App && App.authInfo ? String(App.authInfo.userId || "") : "")
-                                        implicitHeight: card.implicitHeight + 12
-
-                                        Rectangle {
-                                            id: card
-                                            anchors {
-                                                top: parent.top
-                                                left: parent.left
-                                                right: parent.right
-                                                margins: 6
-                                            }
-                                            radius: 12
-                                            color: isSelf ? "#243046" : "#1b2735"
-                                            border.color: panelBorder
-                                            implicitHeight: contentColumn.implicitHeight + 24
-
-                                            ColumnLayout {
-                                                id: contentColumn
-                                                anchors.fill: parent
-                                                anchors.margins: 16
-                                                spacing: 12
-
-                                                RowLayout {
-                                                    Layout.fillWidth: true
-                                                    spacing: 12
-
-                                                    Rectangle {
-                                                        width: 40
-                                                        height: 40
-                                                        radius: 20
-                                                        color: isSelf ? "#4f83ff" : "#374151"
-
-                                                        Label {
-                                                            anchors.centerIn: parent
-                                                            text: String(entry.nickname || "?").charAt(0)
-                                                            font.pixelSize: 18
-                                                            font.bold: true
-                                                        }
-                                                    }
-
-                                                    ColumnLayout {
-                                                        Layout.fillWidth: true
-                                                        spacing: 2
-
-                                                        Label {
-                                                            Layout.fillWidth: true
-                                                            text: String(entry.nickname || "")
-                                                            font.bold: true
-                                                            font.pixelSize: 15
-                                                        }
-
-                                                        Label {
-                                                            Layout.fillWidth: true
-                                                            text: qsTr("ID: %1").arg(String(entry.userId || ""))
-                                                            color: subtleText
-                                                            font.pixelSize: 12
-                                                        }
-                                                    }
-
-                                                    Rectangle {
-                                                        width: 10
-                                                        height: 10
-                                                        radius: 5
-                                                        color: entry.online === false ? "#f87171" : "#34d399"
-                                                        visible: entry.online !== undefined
-                                                        Layout.alignment: Qt.AlignVCenter
-                                                    }
-                                                }
-
-                                                ColumnLayout {
-                                                    id: deviceList
-                                                    Layout.fillWidth: true
-                                                    spacing: 8
-
-                                                    Repeater {
-                                                        model: entry.devices || []
-
-                                                        delegate: Rectangle {
-                                                            Layout.fillWidth: true
-                                                            radius: 8
-                                                            color: (modelData["revoked"] === true) ? "#3f1d29" : "#1f2d3d"
-                                                            border.color: panelBorder
-                                                            implicitHeight: deviceContent.implicitHeight + 12
-
-                                                            ColumnLayout {
-                                                                id: deviceContent
-                                                                anchors.fill: parent
-                                                                anchors.margins: 12
-                                                                spacing: 8
-
-                                                                ColumnLayout {
-                                                                    Layout.fillWidth: true
-                                                                    spacing: 4
-
-                                                                    Label {
-                                                                        Layout.fillWidth: true
-                                                                        text: qsTr("Устройство %1").arg(String(modelData["deviceId"] || ""))
-                                                                        font.pixelSize: 13
-                                                                        font.bold: true
-                                                                    }
-
-                                                                    Label {
-                                                                        Layout.fillWidth: true
-                                                                        text: String(modelData["label"] || "")
-                                                                        color: subtleText
-                                                                        font.pixelSize: 12
-                                                                        visible: text.length > 0
-                                                                    }
-
-                                                                    Label {
-                                                                        Layout.fillWidth: true
-                                                                        text: {
-                                                                            const cert = String(modelData["certificate"] || "")
-                                                                            return cert.length > 36 ? cert.slice(0, 36) + "…" : cert
-                                                                        }
-                                                                        font.family: "monospace"
-                                                                        font.pixelSize: 11
-                                                                        color: subtleText
-                                                                        wrapMode: Text.WrapAnywhere
-                                                                    }
-
-                                                                    Label {
-                                                                        Layout.fillWidth: true
-                                                                        text: (modelData["revoked"] === true)
-                                                                              ? qsTr("Статус: отозван")
-                                                                              : qsTr("Статус: активен")
-                                                                        color: (modelData["revoked"] === true) ? "#f87171" : "#34d399"
-                                                                        font.pixelSize: 12
-                                                                    }
-                                                                }
-
-                                                                RowLayout {
-                                                                    Layout.fillWidth: true
-                                                                    spacing: 8
-
-                                                                    Item { Layout.fillWidth: true }
-
-                                                                    Button {
-                                                                        text: qsTr("Rotate cert")
-                                                                        enabled: App && App.rotateDevice
-                                                                        onClicked: if (App) App.rotateDevice(String(entry.userId || ""), String(modelData["deviceId"] || ""))
-                                                                    }
-
-                                                                    Button {
-                                                                        text: (modelData["revoked"] === true) ? qsTr("Отозвано") : qsTr("Revoke")
-                                                                        enabled: App && App.revokeDevice && !(modelData["revoked"] === true)
-                                                                        onClicked: if (App) App.revokeDevice(String(entry.userId || ""), String(modelData["deviceId"] || ""))
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-
-                                                RowLayout {
-                                                    Layout.fillWidth: true
-                                                    spacing: 8
-                                                    readonly property string myId: App && App.authInfo ? String(App.authInfo.userId || "") : ""
-                                                    visible: String(entry.userId || "") !== myId
-                                                    Layout.preferredHeight: visible ? implicitHeight : 0
-                                                    Layout.minimumHeight: 0
-                                                    Layout.maximumHeight: visible ? implicitHeight : 0
-
-                                                    Label {
-                                                        text: qsTr("Личное сообщение")
-                                                        color: subtleText
-                                                    }
-
-                                                    Item { Layout.fillWidth: true }
-
-                                                    Button {
-                                                        text: qsTr("Написать")
-                                                        icon.name: "chat"
-                                                        enabled: App && App.startConversationWith
-                                                        onClicked: if (App) App.startConversationWith(String(entry.userId || ""))
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
-            }
 
-            Item {
-                SplitView.fillWidth: true
+                Item {
+                    SplitView.fillWidth: true
 
-                ColumnLayout {
-                    anchors.fill: parent
-                    spacing: 16
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 20
+                        spacing: 16
 
-                    Pane {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        padding: 16
-                        background: Rectangle {
-                            color: panelColor
-                            radius: 12
-                            border.color: panelBorder
-                        }
+                        Pane {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            padding: 16
+                            background: Rectangle {
+                                color: panelColor
+                                radius: 12
+                                border.color: panelBorder
+                            }
 
-                        ColumnLayout {
-                            anchors.fill: parent
-                            spacing: 12
-
-                            RowLayout {
-                                Layout.fillWidth: true
+                            ColumnLayout {
+                                anchors.fill: parent
                                 spacing: 12
 
-                                ColumnLayout {
-                                    spacing: 2
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
 
                                     Label {
-                                        text: qsTr("Messaging Service")
+                                        Layout.fillWidth: true
+                                        text: App && App.currentConversation
+                                                  ? (function() {
+                                                        var id = String(App.currentConversation)
+                                                        var list = App.conversationList || []
+                                                        for (var i = 0; i < list.length; ++i) {
+                                                            var entry = list[i]
+                                                            if (String(entry["id"]) === id)
+                                                                return String(entry["title"] || id)
+                                                        }
+                                                        return id
+                                                    })()
+                                                  : qsTr("Чат не выбран")
+                                        font.bold: true
+                                        font.pixelSize: 18
+                                        elide: Text.ElideRight
+                                    }
+
+                                }
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    radius: 10
+                                    color: "#111827"
+                                    border.color: panelBorder
+
+                                    ListView {
+                                        id: chatView
+                                        anchors.fill: parent
+                                        anchors.margins: 12
+                                        clip: true
+                                        spacing: 12
+                                        model: (App && App.conversation) ? App.conversation : []
+                                        boundsBehavior: Flickable.StopAtBounds
+                                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                                        Component.onCompleted: positionViewAtEnd()
+
+                                        delegate: Item {
+                                            width: chatView.width
+                                            property var message: modelData
+                                            implicitHeight: bubble.implicitHeight + 8
+
+                                            Rectangle {
+                                                id: bubble
+                                                anchors.margins: 4
+                                                anchors.left: message && message.outgoing ? undefined : parent.left
+                                                anchors.right: message && message.outgoing ? parent.right : undefined
+                                                color: message && message.outgoing ? bubbleOutgoing : bubbleIncoming
+                                                radius: 12
+                                                border.color: panelBorder
+                                                implicitWidth: Math.min(chatView.width * 0.75, bubbleContent.implicitWidth + 32)
+                                                implicitHeight: bubbleContent.implicitHeight + 24
+
+                                                Column {
+                                                    id: bubbleContent
+                                                    anchors.fill: parent
+                                                    anchors.margins: 12
+                                                    spacing: 4
+
+                                                    Label {
+                                                        text: qsTr("%1 · %2")
+                                                                  .arg(String(message.author || ""))
+                                                                  .arg(String(message.timestamp || ""))
+                                                        font.pixelSize: 11
+                                                        color: "#cbd5f5"
+                                                    }
+
+                                                    Label {
+                                                        text: String(message.text || "")
+                                                        font.pixelSize: 14
+                                                        color: "#f9fafb"
+                                                        wrapMode: Text.WordWrap
+                                                        width: Math.min(chatView.width * 0.72, 480)
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        Connections {
+                                            target: App
+                                            function onConversationChanged() { chatView.positionViewAtEnd() }
+                                        }
+                                    }
+                                }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 12
+
+                                    TextField {
+                                        id: input
+                                        Layout.fillWidth: true
+                                        placeholderText: qsTr("Сообщение (шифруется на клиенте перед отправкой)…")
+                                        onAccepted: sendButton.clicked()
+                                    }
+
+                                    Button {
+                                        id: sendButton
+                                        text: qsTr("Отправить")
+                                        enabled: App && App.send
+                                        onClicked: {
+                                            if (!App || input.text.length === 0)
+                                                return
+                                            App.send(input.text)
+                                            input.text = ""
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Pane {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 220
+                            padding: 16
+                            background: Rectangle {
+                                color: panelColor
+                                radius: 12
+                                border.color: panelBorder
+                            }
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                spacing: 10
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+
+                                    Label {
+                                        text: qsTr("Server debug log")
                                         font.bold: true
                                         font.pixelSize: 16
                                     }
 
+                                    Item { Layout.fillWidth: true }
+
                                     Label {
-                                        text: App && App.currentConversation ? qsTr("Подписка: %1").arg(String(App.currentConversation)) : qsTr("Выберите пользователя или введите conversation id")
+                                        text: qsTr("последние события")
                                         color: subtleText
-                                        font.pixelSize: 12
-                                        wrapMode: Text.WordWrap
                                     }
                                 }
-
-                                Item { Layout.fillWidth: true }
-
-                                TextField {
-                                    id: conversationField
-                                    Layout.preferredWidth: 240
-                                    placeholderText: qsTr("conversation id")
-                                    text: String(App ? App.currentConversation : "")
-                                    onEditingFinished: {
-                                        if (App) {
-                                            App.currentConversation = text
-                                        }
-                                    }
-
-                                    Connections {
-                                        target: App
-                                        function onCurrentConversationChanged() {
-                                            conversationField.text = String(App.currentConversation)
-                                        }
-                                    }
-                                }
-
-                                Button {
-                                    text: qsTr("Подписаться")
-                                    onClicked: {
-                                        if (App) {
-                                            App.currentConversation = conversationField.text
-                                        }
-                                    }
-                                }
-                            }
-
-                            Rectangle {
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                radius: 10
-                                color: "#111827"
-                                border.color: panelBorder
 
                                 ListView {
-                                    id: chatView
-                                    anchors.fill: parent
-                                    anchors.margins: 12
+                                    id: logView
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
                                     clip: true
-                                    spacing: 12
-                                    model: (App && App.conversation) ? App.conversation : []
+                                    spacing: 6
+                                    model: (App && App.serverLog) ? App.serverLog : []
                                     boundsBehavior: Flickable.StopAtBounds
                                     ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
                                     Component.onCompleted: positionViewAtEnd()
 
                                     delegate: Item {
-                                        width: chatView.width
-                                        property var message: modelData
-                                        implicitHeight: bubble.implicitHeight + 8
+                                        width: logView.width
+                                        implicitHeight: logLine.implicitHeight + 8
 
-                                        Rectangle {
-                                            id: bubble
+                                        Label {
+                                            id: logLine
+                                            anchors.fill: parent
                                             anchors.margins: 4
-                                            anchors.left: message && message.outgoing ? undefined : parent.left
-                                            anchors.right: message && message.outgoing ? parent.right : undefined
-                                            color: message && message.outgoing ? bubbleOutgoing : bubbleIncoming
-                                            radius: 12
-                                            border.color: panelBorder
-                                            implicitWidth: Math.min(chatView.width * 0.75, bubbleContent.implicitWidth + 32)
-                                            implicitHeight: bubbleContent.implicitHeight + 24
-
-                                            Column {
-                                                id: bubbleContent
-                                                anchors.fill: parent
-                                                anchors.margins: 12
-                                                spacing: 4
-
-                                                Label {
-                                                    text: qsTr("%1 · %2")
-                                                              .arg(String(message.author || ""))
-                                                              .arg(String(message.timestamp || ""))
-                                                    font.pixelSize: 11
-                                                    color: "#cbd5f5"
-                                                }
-
-                                                Label {
-                                                    text: String(message.text || "")
-                                                    font.pixelSize: 14
-                                                    color: "#f9fafb"
-                                                    wrapMode: Text.WordWrap
-                                                    width: Math.min(chatView.width * 0.72, 480)
-                                                }
-                                            }
+                                            text: String(modelData)
+                                            font.family: "monospace"
+                                            font.pixelSize: 12
+                                            color: "#d1d5db"
+                                            wrapMode: Text.WordWrap
                                         }
                                     }
 
                                     Connections {
                                         target: App
-                                        function onConversationChanged() { chatView.positionViewAtEnd() }
+                                        function onServerLogChanged() { logView.positionViewAtEnd() }
                                     }
-                                }
-                            }
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 12
-
-                                TextField {
-                                    id: input
-                                    Layout.fillWidth: true
-                                    placeholderText: qsTr("Сообщение (шифруется на клиенте перед отправкой)…")
-                                    onAccepted: sendButton.clicked()
-                                }
-
-                                Button {
-                                    id: sendButton
-                                    text: qsTr("Отправить")
-                                    enabled: App && App.send
-                                    onClicked: {
-                                        if (!App || input.text.length === 0)
-                                            return
-                                        App.send(input.text)
-                                        input.text = ""
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Pane {
-                        Layout.fillWidth: true
-                        padding: 16
-                        background: Rectangle {
-                            color: panelColor
-                            radius: 12
-                            border.color: panelBorder
-                        }
-
-                        ColumnLayout {
-                            anchors.fill: parent
-                            spacing: 12
-
-                            Label {
-                                text: qsTr("Серверные возможности")
-                                font.bold: true
-                                font.pixelSize: 16
-                            }
-
-                            Label {
-                                Layout.fillWidth: true
-                                wrapMode: Text.WordWrap
-                                text: qsTr("Сервисы доступны через единый защищённый сервер: каталог пользователей, обмен сообщениями, аудит, управление устройствами.")
-                                color: subtleText
-                            }
-
-                            Flow {
-                                width: parent.width
-                                spacing: 8
-
-                                Repeater {
-                                    model: [
-                                        qsTr("mTLS аутентификация"),
-                                        qsTr("Directory Service"),
-                                        qsTr("Messaging Service"),
-                                        qsTr("Аудит действий"),
-                                        qsTr("Ротация сертификатов"),
-                                        qsTr("Отзыв устройств")
-                                    ]
-
-                                    delegate: Rectangle {
-                                        radius: 14
-                                        color: "#1f2937"
-                                        border.color: panelBorder
-                                        implicitWidth: badgeLabel.implicitWidth + 24
-                                        implicitHeight: badgeLabel.implicitHeight + 12
-
-                                        Label {
-                                            id: badgeLabel
-                                            anchors.centerIn: parent
-                                            text: modelData
-                                            color: "#d1d5db"
-                                            font.pixelSize: 12
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Pane {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 220
-                        padding: 16
-                        background: Rectangle {
-                            color: panelColor
-                            radius: 12
-                            border.color: panelBorder
-                        }
-
-                        ColumnLayout {
-                            anchors.fill: parent
-                            spacing: 10
-
-                            RowLayout {
-                                Layout.fillWidth: true
-
-                                Label {
-                                    text: qsTr("Server debug log")
-                                    font.bold: true
-                                    font.pixelSize: 16
-                                }
-
-                                Item { Layout.fillWidth: true }
-
-                                Label {
-                                    text: qsTr("последние события")
-                                    color: subtleText
-                                }
-                            }
-
-                            ListView {
-                                id: logView
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                clip: true
-                                spacing: 6
-                                model: (App && App.serverLog) ? App.serverLog : []
-                                boundsBehavior: Flickable.StopAtBounds
-                                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-                                Component.onCompleted: positionViewAtEnd()
-
-                                delegate: Item {
-                                    width: logView.width
-                                    implicitHeight: logLine.implicitHeight + 8
-
-                                    Label {
-                                        id: logLine
-                                        anchors.fill: parent
-                                        anchors.margins: 4
-                                        text: String(modelData)
-                                        font.family: "monospace"
-                                        font.pixelSize: 12
-                                        color: "#d1d5db"
-                                        wrapMode: Text.WordWrap
-                                    }
-                                }
-
-                                Connections {
-                                    target: App
-                                    function onServerLogChanged() { logView.positionViewAtEnd() }
                                 }
                             }
                         }
@@ -1010,8 +703,168 @@ ApplicationWindow {
                 }
             }
         }
+
+        
     }
-    }
+    
+    
+
+    Dialog {
+        id: newChatDialog
+        modal: true
+        x: (window.width - width) / 2
+        y: (window.height - height) / 2
+        width: Math.min(460, window.width - 80)
+        standardButtons: Dialog.NoButton
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+        title: qsTr("Новый чат")
+        property string selectedUserId: ""
+
+        onAccepted: {
+            const trimmed = newChatField.text.trim()
+            const target = newChatDialog.selectedUserId.length > 0 ? newChatDialog.selectedUserId : trimmed
+            if (App && App.startConversationWith && target.length > 0)
+                App.startConversationWith(target)
+        }
+
+        onClosed: {
+            newChatField.text = ""
+            newChatDialog.selectedUserId = ""
+        }
+
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 20
+            spacing: 16
+
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("Введите никнейм или выберите запись из справочника")
+                wrapMode: Text.WordWrap
+            }
+
+            TextField {
+                id: newChatField
+                Layout.fillWidth: true
+                placeholderText: qsTr("Никнейм или идентификатор")
+                selectByMouse: true
+                onAccepted: {
+                    if (text.trim().length > 0)
+                        newChatDialog.accept()
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 220
+                radius: 10
+                color: "#111827"
+                border.color: panelBorder
+
+                ListView {
+                    id: directoryList
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    clip: true
+                    spacing: 8
+                    model: (App && App.userList) ? App.userList : []
+                    boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                    delegate: Rectangle {
+                        width: directoryList.width
+                        property var entry: modelData
+                        property string userId: String(entry["userId"] || "")
+                        property string nickname: String(entry["nickname"] || qsTr("Неизвестный"))
+                        property string currentUser: String(App && App.authInfo ? App.authInfo.userId : "")
+                        visible: userId.length > 0 && userId !== currentUser
+                        implicitHeight: visible ? delegateContent.implicitHeight + 12 : 0
+                        radius: 8
+                        border.width: newChatDialog.selectedUserId === userId ? 2 : 1
+                        border.color: newChatDialog.selectedUserId === userId ? Material.accent : panelBorder
+                        color: newChatDialog.selectedUserId === userId ? "#1f2937" : "transparent"
+
+                        ColumnLayout {
+                            id: delegateContent
+                            anchors.fill: parent
+                            anchors.margins: 10
+                            spacing: 2
+
+                            Label {
+                                text: nickname
+                                font.pixelSize: 15
+                                font.bold: true
+                                elide: Text.ElideRight
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                if (!visible)
+                                    return
+                                newChatDialog.selectedUserId = userId
+                                newChatField.text = nickname
+                                newChatDialog.accept()
+                            }
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    anchors.centerIn: parent
+                    width: parent.width - 32
+                    spacing: 6
+                    visible: directoryList.count === 0 || directoryList.contentHeight === 0
+
+                    Label {
+                        text: qsTr("Справочник пуст. Нажмите \"Обновить справочник\" в окне или на панели инструментов.")
+                        color: subtleText
+                        wrapMode: Text.WordWrap
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                }
+            }
+
+            Label {
+                text: qsTr("Чат будет создан с использованием общего идентификатора канала")
+                color: subtleText
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+        }
+
+        footer: RowLayout {
+            spacing: 12
+            Layout.fillWidth: true
+
+            Button {
+                text: qsTr("Отмена")
+                onClicked: newChatDialog.close()
+            }
+
+            Item { Layout.fillWidth: true }
+
+            Button {
+                id: confirmNewChat
+                text: qsTr("Создать")
+                icon.name: "chat"
+                enabled: newChatField.text.trim().length > 0 || newChatDialog.selectedUserId.length > 0
+                onClicked: {
+                    if (enabled)
+                        newChatDialog.accept()
+                }
+            }
+        }
+
+        Component.onCompleted: newChatField.text = ""
+        onOpened: {
+            if (App && App.refreshUsers)
+                App.refreshUsers()
+            newChatDialog.selectedUserId = ""
+            newChatField.forceActiveFocus()
+        }
     }
 
     Connections {

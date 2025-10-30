@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -15,7 +16,8 @@ type httpServer struct {
 }
 
 type registerRequest struct {
-	Nickname string `json:"nickname"`
+	Nickname    string `json:"nickname"`
+	Certificate string `json:"certificate"`
 }
 
 type registerResponse struct {
@@ -28,17 +30,10 @@ type listUsersResponse struct {
 }
 
 type userProfileResponse struct {
-	UserID   string           `json:"user_id"`
-	Nickname string           `json:"nickname"`
-	Roles    []string         `json:"roles"`
-	Devices  []deviceResponse `json:"devices"`
-}
-
-type deviceResponse struct {
-	DeviceID    string `json:"device_id"`
-	CertDER     []byte `json:"cert_der"`
-	Revoked     bool   `json:"revoked"`
-	UpdatedUnix int64  `json:"updated_unix"`
+	UserID      string   `json:"user_id"`
+	Nickname    string   `json:"nickname"`
+	Roles       []string `json:"roles"`
+	Certificate string   `json:"certificate"`
 }
 
 // NewHTTPHandler exposes a minimal endpoint for registering users by nickname.
@@ -66,12 +61,22 @@ func (s *httpServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	nickname := strings.TrimSpace(payload.Nickname)
+	certB64 := strings.TrimSpace(payload.Certificate)
 	if nickname == "" {
 		http.Error(w, "nickname is required", http.StatusBadRequest)
 		return
 	}
+	if certB64 == "" {
+		http.Error(w, "certificate is required", http.StatusBadRequest)
+		return
+	}
+	certDER, err := base64.StdEncoding.DecodeString(certB64)
+	if err != nil {
+		http.Error(w, "certificate must be base64 encoded", http.StatusBadRequest)
+		return
+	}
 
-	profile, err := s.identities.RegisterUser(r.Context(), nickname)
+	profile, err := s.identities.RegisterUser(r.Context(), nickname, certDER)
 	if err != nil {
 		switch {
 		case errors.Is(err, context.Canceled):
@@ -81,6 +86,12 @@ func (s *httpServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, identity.ErrInvalidNickname):
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		case errors.Is(err, identity.ErrNicknameTaken):
+			http.Error(w, err.Error(), http.StatusConflict)
+		case errors.Is(err, identity.ErrInvalidCertificate):
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		case errors.Is(err, identity.ErrCertificateAlreadyAssigned):
+			http.Error(w, err.Error(), http.StatusConflict)
+		case errors.Is(err, identity.ErrCertificateMismatch):
 			http.Error(w, err.Error(), http.StatusConflict)
 		default:
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -122,20 +133,15 @@ func (s *httpServer) handleListUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func convertIdentityProfile(profile identity.Profile) userProfileResponse {
-	devices := make([]deviceResponse, 0, len(profile.Devices))
-	for _, dev := range profile.Devices {
-		devices = append(devices, deviceResponse{
-			DeviceID:    dev.DeviceID,
-			CertDER:     append([]byte(nil), dev.CertDER...),
-			Revoked:     dev.Revoked,
-			UpdatedUnix: dev.Updated.Unix(),
-		})
+	cert := ""
+	if len(profile.CertDER) > 0 {
+		cert = base64.StdEncoding.EncodeToString(profile.CertDER)
 	}
 	return userProfileResponse{
-		UserID:   profile.UserID,
-		Nickname: profile.Nickname,
-		Roles:    append([]string(nil), profile.Roles...),
-		Devices:  devices,
+		UserID:      profile.UserID,
+		Nickname:    profile.Nickname,
+		Roles:       append([]string(nil), profile.Roles...),
+		Certificate: cert,
 	}
 }
 

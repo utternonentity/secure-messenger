@@ -22,7 +22,6 @@ type httpMessage struct {
 	ServerMsgID     string `json:"server_msg_id"`
 	ConversationID  string `json:"conversation_id"`
 	SenderUserID    string `json:"sender_user_id"`
-	SenderDeviceID  string `json:"sender_device_id"`
 	SentUnixSeconds int64  `json:"sent_unix_sec"`
 	Text            string `json:"text"`
 }
@@ -35,7 +34,6 @@ type listResponse struct {
 type sendRequest struct {
 	ConversationID string `json:"conversation_id"`
 	SenderUserID   string `json:"sender_user_id"`
-	SenderDeviceID string `json:"sender_device_id"`
 	Text           string `json:"text"`
 }
 
@@ -43,7 +41,6 @@ type sendResponse struct {
 	ServerMsgID    string `json:"server_msg_id"`
 	ConversationID string `json:"conversation_id"`
 	SenderUserID   string `json:"sender_user_id"`
-	SenderDeviceID string `json:"sender_device_id"`
 	SentUnixSec    int64  `json:"sent_unix_sec"`
 	Text           string `json:"text"`
 }
@@ -96,7 +93,6 @@ func (s *httpServer) handleList(w http.ResponseWriter, r *http.Request) {
 			ServerMsgID:     formatServerMsgID(rec.ID),
 			ConversationID:  conversationIDOf(rec.Envelope),
 			SenderUserID:    senderUserIDOf(rec.Envelope),
-			SenderDeviceID:  senderDeviceIDOf(rec.Envelope),
 			SentUnixSeconds: sentUnixOf(rec.Envelope),
 			Text:            string(rec.Envelope.GetCiphertext()),
 		}
@@ -128,7 +124,6 @@ func (s *httpServer) handleSend(w http.ResponseWriter, r *http.Request) {
 	}
 	payload.ConversationID = strings.TrimSpace(payload.ConversationID)
 	payload.SenderUserID = strings.TrimSpace(payload.SenderUserID)
-	payload.SenderDeviceID = strings.TrimSpace(payload.SenderDeviceID)
 	payload.Text = strings.TrimSpace(payload.Text)
 
 	if payload.ConversationID == "" || payload.SenderUserID == "" || payload.Text == "" {
@@ -136,15 +131,10 @@ func (s *httpServer) handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if payload.SenderDeviceID == "" {
-		payload.SenderDeviceID = payload.SenderUserID + "-device"
-	}
-
 	env := &smv1.EncryptedEnvelope{
 		Meta: &smv1.EnvelopeMeta{
 			ConversationId: payload.ConversationID,
 			SenderUserId:   payload.SenderUserID,
-			SenderDeviceId: payload.SenderDeviceID,
 			SentUnixSec:    time.Now().Unix(),
 		},
 		Ciphertext: []byte(payload.Text),
@@ -161,7 +151,6 @@ func (s *httpServer) handleSend(w http.ResponseWriter, r *http.Request) {
 		ServerMsgID:    resp.GetServerMsgId(),
 		ConversationID: payload.ConversationID,
 		SenderUserID:   payload.SenderUserID,
-		SenderDeviceID: payload.SenderDeviceID,
 		SentUnixSec:    env.GetMeta().GetSentUnixSec(),
 		Text:           payload.Text,
 	})
@@ -210,17 +199,6 @@ func senderUserIDOf(env *smv1.EncryptedEnvelope) string {
 		return ""
 	}
 	return meta.GetSenderUserId()
-}
-
-func senderDeviceIDOf(env *smv1.EncryptedEnvelope) string {
-	if env == nil {
-		return ""
-	}
-	meta := env.GetMeta()
-	if meta == nil {
-		return ""
-	}
-	return meta.GetSenderDeviceId()
 }
 
 func sentUnixOf(env *smv1.EncryptedEnvelope) int64 {

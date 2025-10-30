@@ -47,7 +47,6 @@ type jsonMessage struct {
 	ID             int64  `json:"id"`
 	ConversationID string `json:"conversation_id"`
 	SenderUserID   string `json:"sender_user_id"`
-	SenderDeviceID string `json:"sender_device_id"`
 	SentUnixSec    int64  `json:"sent_unix_sec"`
 	CiphertextB64  string `json:"ciphertext_b64"`
 }
@@ -99,9 +98,6 @@ func (s *fileStore) load() error {
 		if msg.SenderUserID != "" {
 			env.Meta.SenderUserId = msg.SenderUserID
 		}
-		if msg.SenderDeviceID != "" {
-			env.Meta.SenderDeviceId = msg.SenderDeviceID
-		}
 		if msg.SentUnixSec != 0 {
 			env.Meta.SentUnixSec = msg.SentUnixSec
 		}
@@ -137,7 +133,6 @@ func (s *fileStore) persistLocked() error {
 		if meta != nil {
 			msg.ConversationID = meta.GetConversationId()
 			msg.SenderUserID = meta.GetSenderUserId()
-			msg.SenderDeviceID = meta.GetSenderDeviceId()
 			msg.SentUnixSec = meta.GetSentUnixSec()
 		}
 		if len(env.GetCiphertext()) > 0 {

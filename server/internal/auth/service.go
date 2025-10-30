@@ -34,7 +34,7 @@ func (s *Service) WhoAmI(ctx context.Context, _ *smv1.Empty) (*smv1.WhoAmIRespon
 		UserId:        ident.UserID,
 		DisplayName:   ident.Nickname,
 		Roles:         ident.Roles,
-		DeviceId:      ident.DeviceID,
+		DeviceId:      "",
 		DeviceCertDer: ident.CertDER,
 	}, nil
 }
@@ -43,8 +43,6 @@ func mapIdentityError(err error) error {
 	switch {
 	case errors.Is(err, identity.ErrInvalidCertificate):
 		return status.Error(codes.Unauthenticated, err.Error())
-	case errors.Is(err, identity.ErrDeviceRevoked):
-		return status.Error(codes.PermissionDenied, err.Error())
 	case errors.Is(err, identity.ErrCertificateMismatch):
 		return status.Error(codes.PermissionDenied, err.Error())
 	default:

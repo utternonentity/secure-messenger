@@ -9,7 +9,6 @@ import (
 	"crypto/x509/pkix"
 	"errors"
 	"math/big"
-	"net/url"
 	"testing"
 	"time"
 
@@ -17,16 +16,20 @@ import (
 	"google.golang.org/grpc/peer"
 )
 
-func TestValidateCertificateRegistersUser(t *testing.T) {
+func TestValidateCertificateMatchesRegisteredUser(t *testing.T) {
 	mgr := newTestManager(t)
 
-	cert := newIdentityCert(t, "Alice", "user123", "deviceA")
+	cert := newTestCertificate(t, "Alice")
+	profile, err := mgr.RegisterUser(context.Background(), "Alice", cert.Raw)
+	if err != nil {
+		t.Fatalf("RegisterUser: %v", err)
+	}
 
 	identity, err := mgr.ValidateCertificate(cert)
 	if err != nil {
 		t.Fatalf("ValidateCertificate: %v", err)
 	}
-	if identity.UserID != "user123" || identity.DeviceID != "deviceA" {
+	if identity.UserID != profile.UserID {
 		t.Fatalf("unexpected identity: %+v", identity)
 	}
 
@@ -35,61 +38,38 @@ func TestValidateCertificateRegistersUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IdentityFromContext: %v", err)
 	}
-	if ctxIdentity.UserID != "user123" || ctxIdentity.DeviceID != "deviceA" {
+	if ctxIdentity.UserID != profile.UserID {
 		t.Fatalf("unexpected context identity: %+v", ctxIdentity)
 	}
 
-	profile, err := mgr.GetProfile(context.Background(), "user123")
+	stored, err := mgr.GetProfile(context.Background(), profile.UserID)
 	if err != nil {
 		t.Fatalf("GetProfile: %v", err)
 	}
-	if len(profile.Devices) != 1 {
-		t.Fatalf("expected 1 device, got %d", len(profile.Devices))
+	if len(stored.CertDER) == 0 {
+		t.Fatalf("expected certificate to be stored")
 	}
 }
 
-func TestValidateCertificateRejectsRevoked(t *testing.T) {
+func TestValidateCertificateRejectsUnknown(t *testing.T) {
 	mgr := newTestManager(t)
-	cert := newIdentityCert(t, "Alice", "user123", "deviceA")
 
-	if _, err := mgr.ValidateCertificate(cert); err != nil {
-		t.Fatalf("ValidateCertificate: %v", err)
+	cert1 := newTestCertificate(t, "Alice")
+	if _, err := mgr.RegisterUser(context.Background(), "Alice", cert1.Raw); err != nil {
+		t.Fatalf("RegisterUser: %v", err)
 	}
 
-	if _, err := mgr.RevokeDevice(context.Background(), "user123", "deviceA"); err != nil {
-		t.Fatalf("RevokeDevice: %v", err)
-	}
-
-	if _, err := mgr.ValidateCertificate(cert); err != ErrDeviceRevoked {
-		t.Fatalf("expected ErrDeviceRevoked, got %v", err)
-	}
-}
-
-func TestRotateDeviceCertificate(t *testing.T) {
-	mgr := newTestManager(t)
-	cert1 := newIdentityCert(t, "Alice", "user123", "deviceA")
-	if _, err := mgr.ValidateCertificate(cert1); err != nil {
-		t.Fatalf("ValidateCertificate: %v", err)
-	}
-
-	cert2 := newIdentityCert(t, "Alice", "user123", "deviceA")
-	if _, err := mgr.ValidateCertificate(cert2); err == nil {
-		t.Fatalf("expected mismatch before rotation")
-	}
-
-	if _, err := mgr.RotateDeviceCertificate(context.Background(), "user123", "deviceA", cert2.Raw); err != nil {
-		t.Fatalf("RotateDeviceCertificate: %v", err)
-	}
-
-	if _, err := mgr.ValidateCertificate(cert2); err != nil {
-		t.Fatalf("ValidateCertificate(after rotation): %v", err)
+	cert2 := newTestCertificate(t, "Bob")
+	if _, err := mgr.ValidateCertificate(cert2); !errors.Is(err, ErrCertificateMismatch) {
+		t.Fatalf("expected ErrCertificateMismatch, got %v", err)
 	}
 }
 
 func TestRegisterUser(t *testing.T) {
 	mgr := newTestManager(t)
 
-	profile, err := mgr.RegisterUser(context.Background(), "Alice")
+	certAlice := newTestCertificate(t, "Alice")
+	profile, err := mgr.RegisterUser(context.Background(), "Alice", certAlice.Raw)
 	if err != nil {
 		t.Fatalf("RegisterUser: %v", err)
 	}
@@ -104,11 +84,15 @@ func TestRegisterUser(t *testing.T) {
 		t.Fatalf("GetProfile after register: %v", err)
 	}
 
-	if _, err = mgr.RegisterUser(context.Background(), "alice"); !errors.Is(err, ErrNicknameTaken) {
+	if _, err = mgr.RegisterUser(context.Background(), "alice", certAlice.Raw); !errors.Is(err, ErrNicknameTaken) {
 		t.Fatalf("expected ErrNicknameTaken, got %v", err)
 	}
+	if _, err = mgr.RegisterUser(context.Background(), "Alice-2", certAlice.Raw); !errors.Is(err, ErrCertificateAlreadyAssigned) {
+		t.Fatalf("expected ErrCertificateAlreadyAssigned, got %v", err)
+	}
 
-	second, err := mgr.RegisterUser(context.Background(), "Bob")
+	certBob := newTestCertificate(t, "Bob")
+	second, err := mgr.RegisterUser(context.Background(), "Bob", certBob.Raw)
 	if err != nil {
 		t.Fatalf("RegisterUser second: %v", err)
 	}
@@ -116,31 +100,26 @@ func TestRegisterUser(t *testing.T) {
 		t.Fatalf("unexpected second user id: %q", second.UserID)
 	}
 
-	if _, err = mgr.RegisterUser(context.Background(), " "); !errors.Is(err, ErrInvalidNickname) {
+	if _, err = mgr.RegisterUser(context.Background(), " ", certBob.Raw); !errors.Is(err, ErrInvalidNickname) {
 		t.Fatalf("expected ErrInvalidNickname, got %v", err)
 	}
 }
 
-func newIdentityCert(t *testing.T, cn, userID, deviceID string) *x509.Certificate {
+func newTestCertificate(t *testing.T, cn string) *x509.Certificate {
 	t.Helper()
 
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	priv, err := rsa.GenerateKey(rand.Reader, 1024)
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
 	}
 
 	tmpl := &x509.Certificate{
-		SerialNumber: big.NewInt(time.Now().UnixNano()),
-		Subject: pkix.Name{
-			CommonName: cn,
-		},
-		NotBefore: time.Now().Add(-time.Hour),
-		NotAfter:  time.Now().Add(24 * time.Hour),
-		KeyUsage:  x509.KeyUsageDigitalSignature,
-		URIs: []*url.URL{
-			mustParseURL(t, "sm://user/"+userID),
-			mustParseURL(t, "sm://device/"+deviceID),
-		},
+		SerialNumber:          big.NewInt(time.Now().UnixNano()),
+		Subject:               pkix.Name{CommonName: cn},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		BasicConstraintsValid: true,
 	}
 
@@ -153,15 +132,6 @@ func newIdentityCert(t *testing.T, cn, userID, deviceID string) *x509.Certificat
 		t.Fatalf("parse certificate: %v", err)
 	}
 	return cert
-}
-
-func mustParseURL(t *testing.T, raw string) *url.URL {
-	t.Helper()
-	u, err := url.Parse(raw)
-	if err != nil {
-		t.Fatalf("parse url %s: %v", raw, err)
-	}
-	return u
 }
 
 func newTestManager(t *testing.T) *Manager {

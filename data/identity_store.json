@@ -1,19 +1,8 @@
 {
     "users": [
         {
+            "cert_der": "RGV2aWNlIDAxIHByaW1hcnk=",
             "devices": {
-                "device-ivan-laptop": {
-                    "cert_der": "RGV2aWNlIDAxIHByaW1hcnk=",
-                    "device_id": "device-ivan-laptop",
-                    "revoked": false,
-                    "updated_unix": 1709484000
-                },
-                "device-ivan-phone": {
-                    "cert_der": "SXZhbiBwaG9uZQ==",
-                    "device_id": "device-ivan-phone",
-                    "revoked": false,
-                    "updated_unix": 1709484000
-                }
             },
             "nickname": "ironwarden",
             "password": "swordfish",
@@ -24,19 +13,8 @@
             "user_id": "user-0001"
         },
         {
+            "cert_der": "TWFyaWEgbGFwdG9w",
             "devices": {
-                "device-maria-laptop": {
-                    "cert_der": "TWFyaWEgbGFwdG9w",
-                    "device_id": "device-maria-laptop",
-                    "revoked": false,
-                    "updated_unix": 1709484000
-                },
-                "device-maria-mobile": {
-                    "cert_der": "TWFyaWEgbW9iaWxl",
-                    "device_id": "device-maria-mobile",
-                    "revoked": false,
-                    "updated_unix": 1709484000
-                }
             },
             "nickname": "nova",
             "password": "starlight",
@@ -46,13 +24,8 @@
             "user_id": "user-0002"
         },
         {
+            "cert_der": "T2xlZyBkZXNrdG9w",
             "devices": {
-                "device-oleg-desktop": {
-                    "cert_der": "T2xlZyBkZXNrdG9w",
-                    "device_id": "device-oleg-desktop",
-                    "revoked": false,
-                    "updated_unix": 1709484000
-                }
             },
             "nickname": "bytefox",
             "password": "cipherfox",
@@ -62,6 +35,7 @@
             "user_id": "user-0003"
         },
         {
+            "cert_der": "",
             "devices": {
             },
             "nickname": "yves",
@@ -72,6 +46,7 @@
             "user_id": "local-yves"
         },
         {
+            "cert_der": "",
             "devices": {
             },
             "nickname": "utternonentity",
@@ -80,6 +55,16 @@
                 "user"
             ],
             "user_id": "local-utternonentity"
+        },
+        {
+            "devices": {
+            },
+            "nickname": "n3d20",
+            "password": "04072003",
+            "roles": [
+                "user"
+            ],
+            "user_id": "local-n3d20"
         }
     ]
 }

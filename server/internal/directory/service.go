@@ -46,42 +46,11 @@ func (s *Service) GetUser(ctx context.Context, id *smv1.UserId) (*smv1.UserProfi
 	return convertProfile(profile), nil
 }
 
-func (s *Service) RotateDevice(ctx context.Context, req *smv1.RotateDeviceRequest) (*smv1.Device, error) {
-	if len(req.GetNewDeviceCertDer()) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "new_device_cert_der must not be empty")
-	}
-	dev, err := s.identities.RotateDeviceCertificate(ctx, req.GetUserId(), req.GetDeviceId(), req.GetNewDeviceCertDer())
-	if err != nil {
-		return nil, mapDirectoryError(err)
-	}
-	return convertDevice(dev), nil
-}
-
-func (s *Service) RevokeDevice(ctx context.Context, req *smv1.RevokeDeviceRequest) (*smv1.Device, error) {
-	dev, err := s.identities.RevokeDevice(ctx, req.GetUserId(), req.GetDeviceId())
-	if err != nil {
-		return nil, mapDirectoryError(err)
-	}
-	return convertDevice(dev), nil
-}
-
 func convertProfile(profile identity.Profile) *smv1.UserProfile {
-	devices := make([]*smv1.Device, 0, len(profile.Devices))
-	for _, dev := range profile.Devices {
-		devices = append(devices, convertDevice(dev))
-	}
 	return &smv1.UserProfile{
 		UserId:      profile.UserID,
 		DisplayName: profile.Nickname,
-		Devices:     devices,
-	}
-}
-
-func convertDevice(dev identity.Device) *smv1.Device {
-	return &smv1.Device{
-		DeviceId:      dev.DeviceID,
-		DeviceCertDer: dev.CertDER,
-		Revoked:       dev.Revoked,
+		Devices:     nil,
 	}
 }
 
@@ -89,8 +58,6 @@ func mapDirectoryError(err error) error {
 	switch {
 	case errors.Is(err, identity.ErrInvalidCertificate):
 		return status.Error(codes.InvalidArgument, err.Error())
-	case errors.Is(err, identity.ErrDeviceRevoked):
-		return status.Error(codes.FailedPrecondition, err.Error())
 	case errors.Is(err, identity.ErrCertificateMismatch):
 		return status.Error(codes.FailedPrecondition, err.Error())
 	default:

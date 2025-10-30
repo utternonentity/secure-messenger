@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 // EnsureSeedData creates a demo identity store if the file does not exist yet.
@@ -21,47 +20,20 @@ func EnsureSeedData(path string) error {
 		return fmt.Errorf("identity: check seed store: %w", err)
 	}
 
-	now := time.Now().UTC().Unix()
 	users := []storedUser{
 		{
 			UserID:   "user-0001",
 			Nickname: "ironwarden",
 			Roles:    []string{"admin", "user"},
 			Password: "swordfish",
-			Devices: map[string]storedDevice{
-				"device-ivan-laptop": {
-					DeviceID:    "device-ivan-laptop",
-					CertDER:     []byte("Device 01 primary"),
-					Revoked:     false,
-					UpdatedUnix: now,
-				},
-				"device-ivan-phone": {
-					DeviceID:    "device-ivan-phone",
-					CertDER:     []byte("Ivan phone"),
-					Revoked:     false,
-					UpdatedUnix: now,
-				},
-			},
+			CertDER:  []byte("Device 01 primary"),
 		},
 		{
 			UserID:   "user-0002",
 			Nickname: "nova",
 			Roles:    []string{"user"},
 			Password: "starlight",
-			Devices: map[string]storedDevice{
-				"device-maria-laptop": {
-					DeviceID:    "device-maria-laptop",
-					CertDER:     []byte("Maria laptop"),
-					Revoked:     false,
-					UpdatedUnix: now,
-				},
-				"device-maria-mobile": {
-					DeviceID:    "device-maria-mobile",
-					CertDER:     []byte("Maria mobile"),
-					Revoked:     false,
-					UpdatedUnix: now,
-				},
-			},
+			CertDER:  []byte("Maria laptop"),
 		},
 	}
 
