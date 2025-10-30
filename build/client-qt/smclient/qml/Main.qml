@@ -3,6 +3,7 @@ import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 import QtQuick.Layouts 1.15
 import QtQml 2.15
+import QtQuick.Dialogs 6.4
 
 ApplicationWindow {
     id: window
@@ -103,13 +104,20 @@ ApplicationWindow {
                             return;
                         }
                         var result = registrationMode
-                                ? (App.completeRegistration ? App.completeRegistration(authNickname.text, authPassword.text) : qsTr("Сервис недоступен"))
+                                ? (App.completeRegistration
+                                           ? App.completeRegistration(authNickname.text,
+                                                                      authPassword.text,
+                                                                      authCertificate.text)
+                                           : qsTr("Сервис недоступен"))
                                 : (App.authenticate ? App.authenticate(authNickname.text, authPassword.text) : qsTr("Сервис недоступен"));
                         if (result && result.length > 0) {
                             formError = result;
                         } else {
                             formError = "";
                             authPassword.text = "";
+                            if (registrationMode) {
+                                authCertificate.text = "";
+                            }
                         }
                     }
 
@@ -123,7 +131,7 @@ ApplicationWindow {
 
                     Label {
                         text: authForm.registrationMode
-                              ? qsTr("Придумайте уникальный никнейм и пароль, чтобы зарегистрироваться.")
+                              ? qsTr("Придумайте уникальный никнейм, укажите сертификат устройства и пароль для регистрации.")
                               : qsTr("Введите свой никнейм и пароль для входа в систему.")
                         color: subtleText
                         wrapMode: Text.WordWrap
@@ -147,6 +155,7 @@ ApplicationWindow {
                                 if (App && !App.registered) {
                                     authNickname.forceActiveFocus()
                                     authPassword.text = ""
+                                    authCertificate.text = ""
                                     authForm.formError = ""
                                 }
                             }
@@ -160,6 +169,34 @@ ApplicationWindow {
                         echoMode: TextInput.Password
                         selectByMouse: true
                         onAccepted: authForm.performPrimaryAction()
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        visible: authForm.registrationMode
+                        spacing: 12
+
+                        TextField {
+                            id: authCertificate
+                            Layout.fillWidth: true
+                            placeholderText: qsTr("Путь к PEM/DER сертификату")
+                            selectByMouse: true
+                            onAccepted: authForm.performPrimaryAction()
+                        }
+
+                        Button {
+                            text: qsTr("Выбрать...")
+                            icon.name: "folder"
+                            onClicked: certFileDialog.open()
+                        }
+                    }
+
+                    Label {
+                        visible: authForm.registrationMode
+                        text: qsTr("Сертификат необходим, чтобы сервер распознал ваше устройство. Поддерживаются файлы в PEM или DER формате.")
+                        color: subtleText
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
                     }
 
                     Label {
@@ -178,7 +215,11 @@ ApplicationWindow {
                             id: primaryAction
                             text: authForm.registrationMode ? qsTr("Зарегистрироваться") : qsTr("Войти")
                             icon.name: authForm.registrationMode ? "account-circle" : "login"
-                            enabled: authNickname.text.trim().length > 0 && authPassword.text.length > 0 && App && (authForm.registrationMode ? App.completeRegistration : App.authenticate)
+                            enabled: authNickname.text.trim().length > 0
+                                     && authPassword.text.length > 0
+                                     && (!authForm.registrationMode || authCertificate.text.trim().length > 0)
+                                     && App
+                                     && (authForm.registrationMode ? App.completeRegistration : App.authenticate)
                             onClicked: authForm.performPrimaryAction()
                         }
 
@@ -212,6 +253,7 @@ ApplicationWindow {
                                 authForm.registrationMode = !authForm.registrationMode
                                 authForm.formError = ""
                                 authPassword.text = ""
+                                authCertificate.text = ""
                                 authNickname.forceActiveFocus()
                             }
                         }
@@ -326,6 +368,15 @@ ApplicationWindow {
                                 }
                             }
                         }
+                    }
+                }
+
+                FileDialog {
+                    id: certFileDialog
+                    title: qsTr("Выберите сертификат устройства")
+                    nameFilters: [qsTr("Сертификаты (*.pem *.cer *.crt *.der)")]
+                    onAccepted: {
+                        authCertificate.text = fileUrl.toLocalFile()
                     }
                 }
             }

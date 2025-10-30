@@ -26,7 +26,7 @@ QT_WARNING_PUSH
 QT_WARNING_DISABLE_DEPRECATED
 namespace {
 struct qt_meta_stringdata_AppController_t {
-    uint offsetsAndSizes[60];
+    uint offsetsAndSizes[62];
     char stringdata0[14];
     char stringdata1[16];
     char stringdata2[1];
@@ -49,14 +49,15 @@ struct qt_meta_stringdata_AppController_t {
     char stringdata19[9];
     char stringdata20[9];
     char stringdata21[21];
-    char stringdata22[18];
-    char stringdata23[9];
+    char stringdata22[16];
+    char stringdata23[18];
     char stringdata24[9];
-    char stringdata25[13];
-    char stringdata26[17];
-    char stringdata27[10];
-    char stringdata28[20];
-    char stringdata29[11];
+    char stringdata25[9];
+    char stringdata26[13];
+    char stringdata27[17];
+    char stringdata28[10];
+    char stringdata29[20];
+    char stringdata30[11];
 };
 #define QT_MOC_LITERAL(ofs, len) \
     uint(sizeof(qt_meta_stringdata_AppController_t::offsetsAndSizes) + ofs), len 
@@ -84,14 +85,15 @@ Q_CONSTINIT static const qt_meta_stringdata_AppController_t qt_meta_stringdata_A
         QT_MOC_LITERAL(268, 8),  // "nickname"
         QT_MOC_LITERAL(277, 8),  // "password"
         QT_MOC_LITERAL(286, 20),  // "completeRegistration"
-        QT_MOC_LITERAL(307, 17),  // "resetRegistration"
-        QT_MOC_LITERAL(325, 8),  // "authInfo"
-        QT_MOC_LITERAL(334, 8),  // "userList"
-        QT_MOC_LITERAL(343, 12),  // "conversation"
-        QT_MOC_LITERAL(356, 16),  // "conversationList"
-        QT_MOC_LITERAL(373, 9),  // "serverLog"
-        QT_MOC_LITERAL(383, 19),  // "currentConversation"
-        QT_MOC_LITERAL(403, 10)   // "registered"
+        QT_MOC_LITERAL(307, 15),  // "certificatePath"
+        QT_MOC_LITERAL(323, 17),  // "resetRegistration"
+        QT_MOC_LITERAL(341, 8),  // "authInfo"
+        QT_MOC_LITERAL(350, 8),  // "userList"
+        QT_MOC_LITERAL(359, 12),  // "conversation"
+        QT_MOC_LITERAL(372, 16),  // "conversationList"
+        QT_MOC_LITERAL(389, 9),  // "serverLog"
+        QT_MOC_LITERAL(399, 19),  // "currentConversation"
+        QT_MOC_LITERAL(419, 10)   // "registered"
     },
     "AppController",
     "authInfoChanged",
@@ -115,6 +117,7 @@ Q_CONSTINIT static const qt_meta_stringdata_AppController_t qt_meta_stringdata_A
     "nickname",
     "password",
     "completeRegistration",
+    "certificatePath",
     "resetRegistration",
     "authInfo",
     "userList",
@@ -134,7 +137,7 @@ Q_CONSTINIT static const uint qt_meta_data_AppController[] = {
        0,       // classname
        0,    0, // classinfo
       16,   14, // methods
-       8,  146, // properties
+       8,  148, // properties
        0,    0, // enums/sets
        0,    0, // constructors
        0,       // flags
@@ -157,8 +160,8 @@ Q_CONSTINIT static const uint qt_meta_data_AppController[] = {
       16,    0,  133,    2, 0x02,   26 /* Public */,
       17,    0,  134,    2, 0x02,   27 /* Public */,
       18,    2,  135,    2, 0x02,   28 /* Public */,
-      21,    2,  140,    2, 0x02,   31 /* Public */,
-      22,    0,  145,    2, 0x02,   34 /* Public */,
+      21,    3,  140,    2, 0x02,   31 /* Public */,
+      23,    0,  147,    2, 0x02,   35 /* Public */,
 
  // signals: parameters
     QMetaType::Void,
@@ -177,17 +180,17 @@ Q_CONSTINIT static const uint qt_meta_data_AppController[] = {
     QMetaType::Void,
     QMetaType::Void,
     QMetaType::QString, QMetaType::QString, QMetaType::QString,   19,   20,
-    QMetaType::QString, QMetaType::QString, QMetaType::QString,   19,   20,
+    QMetaType::QString, QMetaType::QString, QMetaType::QString, QMetaType::QString,   19,   20,   22,
     QMetaType::Void,
 
  // properties: name, type, flags
-      23, QMetaType::QVariantMap, 0x00015001, uint(0), 0,
-      24, QMetaType::QVariantList, 0x00015001, uint(1), 0,
-      25, QMetaType::QVariantList, 0x00015001, uint(2), 0,
-      26, QMetaType::QVariantList, 0x00015001, uint(3), 0,
-      27, QMetaType::QStringList, 0x00015001, uint(4), 0,
-      28, QMetaType::QString, 0x00015103, uint(5), 0,
-      29, QMetaType::Bool, 0x00015001, uint(6), 0,
+      24, QMetaType::QVariantMap, 0x00015001, uint(0), 0,
+      25, QMetaType::QVariantList, 0x00015001, uint(1), 0,
+      26, QMetaType::QVariantList, 0x00015001, uint(2), 0,
+      27, QMetaType::QVariantList, 0x00015001, uint(3), 0,
+      28, QMetaType::QStringList, 0x00015001, uint(4), 0,
+      29, QMetaType::QString, 0x00015103, uint(5), 0,
+      30, QMetaType::Bool, 0x00015001, uint(6), 0,
       19, QMetaType::QString, 0x00015001, uint(6), 0,
 
        0        // eod
@@ -258,6 +261,7 @@ Q_CONSTINIT const QMetaObject AppController::staticMetaObject = { {
         QtPrivate::TypeAndForceComplete<QString, std::false_type>,
         QtPrivate::TypeAndForceComplete<const QString &, std::false_type>,
         QtPrivate::TypeAndForceComplete<const QString &, std::false_type>,
+        QtPrivate::TypeAndForceComplete<const QString &, std::false_type>,
         // method 'resetRegistration'
         QtPrivate::TypeAndForceComplete<void, std::false_type>
     >,
@@ -285,7 +289,7 @@ void AppController::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _i
         case 12: _t->simulatePull(); break;
         case 13: { QString _r = _t->authenticate((*reinterpret_cast< std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast< std::add_pointer_t<QString>>(_a[2])));
             if (_a[0]) *reinterpret_cast< QString*>(_a[0]) = std::move(_r); }  break;
-        case 14: { QString _r = _t->completeRegistration((*reinterpret_cast< std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast< std::add_pointer_t<QString>>(_a[2])));
+        case 14: { QString _r = _t->completeRegistration((*reinterpret_cast< std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast< std::add_pointer_t<QString>>(_a[2])),(*reinterpret_cast< std::add_pointer_t<QString>>(_a[3])));
             if (_a[0]) *reinterpret_cast< QString*>(_a[0]) = std::move(_r); }  break;
         case 15: _t->resetRegistration(); break;
         default: ;

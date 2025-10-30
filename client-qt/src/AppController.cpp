@@ -11,6 +11,9 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
+#include <QEventLoop>
+#include <QSsl>
+#include <QSslCertificate>
 #include <QLocale>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
@@ -287,7 +290,9 @@ QString AppController::authenticate(const QString &nickname, const QString &pass
     return {};
 }
 
-QString AppController::completeRegistration(const QString &nickname, const QString &password)
+QString AppController::completeRegistration(const QString &nickname,
+                                            const QString &password,
+                                            const QString &certificatePath)
 {
     const QString trimmed = nickname.trimmed();
     if (trimmed.isEmpty()) {
@@ -298,12 +303,103 @@ QString AppController::completeRegistration(const QString &nickname, const QStri
         return tr("Введите пароль");
     }
 
+    if (m_registrationInFlight) {
+        return tr("Дождитесь завершения предыдущей регистрации");
+    }
+
+    const QString certificateFile = certificatePath.trimmed();
+    if (certificateFile.isEmpty()) {
+        return tr("Укажите путь к клиентскому сертификату");
+    }
+
     if (findCredentialByNickname(trimmed)) {
         return tr("Пользователь с таким ником уже существует");
     }
 
-    const QString userId = generateUserIdForNickname(trimmed);
-    Credential credential{userId, trimmed, password};
+    QFile certFile(certificateFile);
+    if (!certFile.exists() || !certFile.open(QIODevice::ReadOnly)) {
+        return tr("Не удалось прочитать сертификат");
+    }
+    const QByteArray certData = certFile.readAll();
+    certFile.close();
+
+    QList<QSslCertificate> parsed = QSslCertificate::fromData(certData, QSsl::Pem);
+    if (parsed.isEmpty()) {
+        parsed = QSslCertificate::fromData(certData, QSsl::Der);
+    }
+    if (parsed.isEmpty() || parsed.first().isNull()) {
+        return tr("Файл не содержит валидный сертификат");
+    }
+    const QByteArray certDer = parsed.first().toDer();
+    if (certDer.isEmpty()) {
+        return tr("Не удалось преобразовать сертификат");
+    }
+
+    if (!m_networkManager) {
+        return tr("Сетевой менеджер не инициализирован");
+    }
+
+    const QUrl url = buildApiUrl(QStringLiteral("/api/auth/register"));
+    if (!url.isValid()) {
+        return tr("Некорректный адрес API (%1)").arg(m_apiBaseUrl);
+    }
+
+    const QString certBase64 = QString::fromLatin1(certDer.toBase64());
+
+    QJsonObject payload;
+    payload.insert(QStringLiteral("nickname"), trimmed);
+    payload.insert(QStringLiteral("certificate"), certBase64);
+
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+
+    QEventLoop loop;
+    QNetworkReply *reply = m_networkManager->post(request, QJsonDocument(payload).toJson());
+    QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+
+    QScopedValueRollback<bool> inFlight(m_registrationInFlight, true);
+    loop.exec();
+
+    const QNetworkReply::NetworkError networkError = reply->error();
+    const QByteArray responseBytes = reply->readAll();
+    const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    const QString errorText = reply->errorString();
+    reply->deleteLater();
+
+    if (networkError != QNetworkReply::NoError) {
+        return tr("Ошибка регистрации: %1").arg(errorText);
+    }
+    if (statusCode >= 400) {
+        const QString serverMsg = QString::fromUtf8(responseBytes).trimmed();
+        if (!serverMsg.isEmpty()) {
+            return tr("Регистрация отклонена: %1").arg(serverMsg);
+        }
+        return tr("Регистрация отклонена (код %1)").arg(statusCode);
+    }
+
+    QJsonParseError parseError{};
+    const QJsonDocument doc = QJsonDocument::fromJson(responseBytes, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        return tr("Сервер вернул некорректный ответ");
+    }
+
+    const QJsonObject obj = doc.object();
+    const QString userId = obj.value(QStringLiteral("user_id")).toString().trimmed();
+    QString serverNickname = obj.value(QStringLiteral("nickname"))
+                                  .toString(trimmed)
+                                  .trimmed();
+    if (userId.isEmpty()) {
+        return tr("Сервер не присвоил идентификатор пользователю");
+    }
+    if (serverNickname.isEmpty()) {
+        serverNickname = trimmed;
+    }
+
+    Credential credential;
+    credential.userId = userId;
+    credential.nickname = serverNickname;
+    credential.password = password.trimmed();
+    credential.certificateDer = certBase64;
     m_credentials.append(credential);
     if (!persistCredentials()) {
         m_credentials.removeLast();
@@ -311,12 +407,12 @@ QString AppController::completeRegistration(const QString &nickname, const QStri
     }
 
     m_registeredUserId = userId;
-    m_registeredNickname = trimmed;
+    m_registeredNickname = serverNickname;
     m_isRegistered = true;
-    persistRegistration(userId, trimmed);
+    persistRegistration(userId, serverNickname);
 
-    appendLog(QStringLiteral("Registration -> создан профиль %1 (%2)")
-                  .arg(trimmed, userId));
+    appendLog(QStringLiteral("Registration -> зарегистрирован профиль %1 (%2)")
+                  .arg(serverNickname, userId));
 
     emit registrationChanged();
 
@@ -1426,6 +1522,7 @@ void AppController::loadCredentials()
         credential.userId = obj.value(QStringLiteral("user_id")).toString().trimmed();
         credential.nickname = obj.value(QStringLiteral("nickname")).toString(credential.userId).trimmed();
         credential.password = obj.value(QStringLiteral("password")).toString();
+        credential.certificateDer = obj.value(QStringLiteral("cert_der")).toString().trimmed();
         if (credential.userId.isEmpty() || credential.nickname.isEmpty() || credential.password.trimmed().isEmpty()) {
             continue;
         }
@@ -1491,6 +1588,9 @@ bool AppController::persistCredentials() const
         obj.insert(QStringLiteral("user_id"), userId);
         obj.insert(QStringLiteral("nickname"), nickname);
         obj.insert(QStringLiteral("password"), password);
+        if (!credential.certificateDer.trimmed().isEmpty()) {
+            obj.insert(QStringLiteral("cert_der"), credential.certificateDer.trimmed());
+        }
 
         const QJsonValue rolesValue = obj.value(QStringLiteral("roles"));
         if (!rolesValue.isArray() || rolesValue.toArray().isEmpty()) {

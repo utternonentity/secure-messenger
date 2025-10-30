@@ -202,6 +202,34 @@
       "sender_user_id": "user-0002",
       "sent_unix_sec": 1761807327,
       "ciphertext_b64": "0YfRgtC+INC/0YDQvtC40YHRhdC+0LTQuNGC"
+    },
+    {
+      "id": 30,
+      "conversation_id": "corp-secure-room",
+      "sender_user_id": "user-0002",
+      "sent_unix_sec": 1761809685,
+      "ciphertext_b64": "0YXQtyDRhdC3"
+    },
+    {
+      "id": 31,
+      "conversation_id": "corp-secure-room",
+      "sender_user_id": "local-yves",
+      "sent_unix_sec": 1761809700,
+      "ciphertext_b64": "0L3QtdC/0L7QvdGP0YLQutC4INGA0LXQsNC7"
+    },
+    {
+      "id": 32,
+      "conversation_id": "dm-user-0001-user-0002",
+      "sender_user_id": "local-yves",
+      "sent_unix_sec": 1761809704,
+      "ciphertext_b64": "0YfRgtC+"
+    },
+    {
+      "id": 33,
+      "conversation_id": "dm-local-utternonentity-local-yves",
+      "sender_user_id": "local-yves",
+      "sent_unix_sec": 1761809720,
+      "ciphertext_b64": "0YXRg9C5INGB0L7RgdC4"
     }
   ]
 }

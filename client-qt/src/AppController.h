@@ -45,7 +45,9 @@ public:
     Q_INVOKABLE void refreshUsers();
     Q_INVOKABLE void simulatePull();
     Q_INVOKABLE QString authenticate(const QString &nickname, const QString &password);
-    Q_INVOKABLE QString completeRegistration(const QString &nickname, const QString &password);
+    Q_INVOKABLE QString completeRegistration(const QString &nickname,
+                                             const QString &password,
+                                             const QString &certificatePath);
     Q_INVOKABLE void resetRegistration();
 
 signals:
@@ -128,6 +130,7 @@ private:
         QString userId;
         QString nickname;
         QString password;
+        QString certificateDer;
     };
 
     Credential *findCredentialByNickname(const QString &nickname);

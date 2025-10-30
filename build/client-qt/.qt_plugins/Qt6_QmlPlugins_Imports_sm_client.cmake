@@ -1,4 +1,4 @@
-set(qml_import_scanner_imports_count 23)
+set(qml_import_scanner_imports_count 24)
 set(qml_import_scanner_import_0 "CLASSNAME;QtQuick2Plugin;LINKTARGET;Qt6::qtquick2plugin;NAME;QtQuick;PATH;/usr/lib/x86_64-linux-gnu/qt6/qml/QtQuick;PLUGIN;qtquick2plugin;PLUGINISOPTIONAL;;PREFER;:/qt-project.org/imports/QtQuick/;RELATIVEPATH;QtQuick;TYPE;module;")
 set(qml_import_scanner_import_1 "CLASSNAME;QtQmlPlugin;LINKTARGET;Qt6::qmlplugin;NAME;QtQml;PATH;/usr/lib/x86_64-linux-gnu/qt6/qml/QtQml;PLUGIN;qmlplugin;PLUGINISOPTIONAL;;PREFER;:/qt-project.org/imports/QtQml/;RELATIVEPATH;QtQml;TYPE;module;")
 set(qml_import_scanner_import_2 "NAME;QtQml.Models;TYPE;module;")
@@ -22,4 +22,5 @@ set(qml_import_scanner_import_19 "CLASSNAME;QtQuickControls2UniversalStyleImplPl
 set(qml_import_scanner_import_20 "CLASSNAME;QtQuickControls2BasicStyleImplPlugin;LINKTARGET;Qt6::qtquickcontrols2basicstyleimplplugin;NAME;QtQuick.Controls.Basic.impl;PATH;/usr/lib/x86_64-linux-gnu/qt6/qml/QtQuick/Controls/Basic/impl;PLUGIN;qtquickcontrols2basicstyleimplplugin;PREFER;:/qt-project.org/imports/QtQuick/Controls/Basic/impl/;RELATIVEPATH;QtQuick/Controls/Basic/impl;TYPE;module;")
 set(qml_import_scanner_import_21 "NAME;QtQuick.Shapes;TYPE;module;")
 set(qml_import_scanner_import_22 "CLASSNAME;QtQuickLayoutsPlugin;LINKTARGET;Qt6::qquicklayoutsplugin;NAME;QtQuick.Layouts;PATH;/usr/lib/x86_64-linux-gnu/qt6/qml/QtQuick/Layouts;PLUGIN;qquicklayoutsplugin;PLUGINISOPTIONAL;;PREFER;:/qt-project.org/imports/QtQuick/Layouts/;RELATIVEPATH;QtQuick/Layouts;TYPE;module;")
+set(qml_import_scanner_import_23 "CLASSNAME;QtQuickDialogsPlugin;LINKTARGET;Qt6::qtquickdialogsplugin;NAME;QtQuick.Dialogs;PATH;/usr/lib/x86_64-linux-gnu/qt6/qml/QtQuick/Dialogs;PLUGIN;qtquickdialogsplugin;PLUGINISOPTIONAL;;PREFER;:/qt-project.org/imports/QtQuick/Dialogs/;RELATIVEPATH;QtQuick/Dialogs;TYPE;module;")
 
