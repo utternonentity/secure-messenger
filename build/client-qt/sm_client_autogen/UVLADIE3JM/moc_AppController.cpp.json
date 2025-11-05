@@ -75,6 +75,10 @@
                         {
                             "name": "password",
                             "type": "QString"
+                        },
+                        {
+                            "name": "certificatePath",
+                            "type": "QString"
                         }
                     ],
                     "name": "authenticate",

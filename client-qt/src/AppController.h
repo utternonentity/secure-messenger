@@ -44,7 +44,9 @@ public:
     Q_INVOKABLE void revokeDevice(const QString &userId, const QString &deviceId);
     Q_INVOKABLE void refreshUsers();
     Q_INVOKABLE void simulatePull();
-    Q_INVOKABLE QString authenticate(const QString &nickname, const QString &password);
+    Q_INVOKABLE QString authenticate(const QString &nickname,
+                                     const QString &password,
+                                     const QString &certificatePath);
     Q_INVOKABLE QString completeRegistration(const QString &nickname,
                                              const QString &password,
                                              const QString &certificatePath);
@@ -120,6 +122,7 @@ private:
     void rebuildConversationOrder();
     QString conversationDisplayName(const QString &conversationId) const;
     QString conversationSubtitle(const QString &conversationId) const;
+    bool isConversationVisible(const QString &conversationId) const;
     void loadCredentials();
     bool persistCredentials() const;
     QString identityStoreFilePath() const;

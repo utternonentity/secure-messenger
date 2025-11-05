@@ -116,6 +116,11 @@ void AppController::setCurrentConversation(const QString &conversationId)
     if (trimmed.isEmpty()) {
         return;
     }
+    if (!isConversationVisible(trimmed)) {
+        appendLog(QStringLiteral("Messaging.Visibility -> канал %1 недоступен текущему профилю")
+                      .arg(trimmed));
+        return;
+    }
     if (!m_conversations.contains(trimmed)) {
         m_conversations.insert(trimmed, {});
     }
@@ -256,22 +261,59 @@ void AppController::simulatePull()
     fetchHistoryFromServer(m_lastServerMsgId);
 }
 
-QString AppController::authenticate(const QString &nickname, const QString &password)
+QString AppController::authenticate(const QString &nickname,
+                                    const QString &password,
+                                    const QString &certificatePath)
 {
     const QString trimmedNickname = nickname.trimmed();
     if (trimmedNickname.isEmpty()) {
         return tr("Введите никнейм");
     }
-    if (password.trimmed().isEmpty()) {
+    const QString trimmedPassword = password.trimmed();
+    if (trimmedPassword.isEmpty()) {
         return tr("Введите пароль");
+    }
+
+    const QString certificateFile = certificatePath.trimmed();
+    if (certificateFile.isEmpty()) {
+        return tr("Укажите сертификат устройства");
     }
 
     Credential *credential = findCredentialByNickname(trimmedNickname);
     if (!credential) {
         return tr("Пользователь не найден");
     }
-    if (credential->password != password) {
+    if (credential->password != trimmedPassword) {
         return tr("Неверный пароль");
+    }
+
+    QFile certFile(certificateFile);
+    if (!certFile.exists() || !certFile.open(QIODevice::ReadOnly)) {
+        return tr("Не удалось прочитать сертификат");
+    }
+    const QByteArray certData = certFile.readAll();
+    certFile.close();
+
+    QList<QSslCertificate> parsed = QSslCertificate::fromData(certData, QSsl::Pem);
+    if (parsed.isEmpty()) {
+        parsed = QSslCertificate::fromData(certData, QSsl::Der);
+    }
+    if (parsed.isEmpty() || parsed.first().isNull()) {
+        return tr("Файл не содержит валидный сертификат");
+    }
+    const QByteArray certDer = parsed.first().toDer();
+    if (certDer.isEmpty()) {
+        return tr("Не удалось преобразовать сертификат");
+    }
+
+    const QString providedCert = QString::fromLatin1(certDer.toBase64()).trimmed();
+    const QString registeredCert = credential->certificateDer.trimmed();
+    if (registeredCert.isEmpty()) {
+        return tr("Для профиля %1 не сохранён сертификат. Повторите регистрацию.")
+            .arg(credential->nickname);
+    }
+    if (QString::compare(providedCert, registeredCert, Qt::CaseSensitive) != 0) {
+        return tr("Сертификат не совпадает с зарегистрированным устройством");
     }
 
     m_registeredUserId = credential->userId;
@@ -344,7 +386,7 @@ QString AppController::completeRegistration(const QString &nickname,
         return tr("Некорректный адрес API (%1)").arg(m_apiBaseUrl);
     }
 
-    const QString certBase64 = QString::fromLatin1(certDer.toBase64());
+    const QString certBase64 = QString::fromLatin1(certDer.toBase64()).trimmed();
 
     QJsonObject payload;
     payload.insert(QStringLiteral("nickname"), trimmed);
@@ -504,6 +546,9 @@ QVariantList AppController::buildUserList() const
 QVariantList AppController::buildConversation() const
 {
     QVariantList list;
+    if (!isConversationVisible(m_currentConversation)) {
+        return list;
+    }
     const auto it = m_conversations.constFind(m_currentConversation);
     if (it == m_conversations.constEnd()) {
         return list;
@@ -526,6 +571,9 @@ QVariantList AppController::buildConversationList() const
 {
     QVariantList list;
     for (const QString &conversationId : m_conversationOrder) {
+        if (!isConversationVisible(conversationId)) {
+            continue;
+        }
         QVariantMap entry;
         entry.insert(QStringLiteral("id"), conversationId);
         entry.insert(QStringLiteral("title"), conversationDisplayName(conversationId));
@@ -711,6 +759,14 @@ void AppController::loadServerData()
         }
     }
 
+    if (!isConversationVisible(m_currentConversation)) {
+        if (isConversationVisible(QStringLiteral("corp-secure-room"))) {
+            m_currentConversation = QStringLiteral("corp-secure-room");
+        } else {
+            m_currentConversation.clear();
+        }
+    }
+
     if (!usersLoaded) {
         appendLog(QStringLiteral("Directory.Load -> не удалось прочитать %1, использованы встроенные данные")
                       .arg(identityPath));
@@ -883,6 +939,9 @@ bool AppController::loadMessageHistory(const QString &path)
         const qint64 id = static_cast<qint64>(obj.value(QStringLiteral("id")).toDouble());
         const QString conversationId = obj.value(QStringLiteral("conversation_id")).toString().trimmed();
         if (conversationId.isEmpty()) {
+            continue;
+        }
+        if (!isConversationVisible(conversationId)) {
             continue;
         }
         const QString senderId = obj.value(QStringLiteral("sender_user_id")).toString();
@@ -1184,6 +1243,9 @@ int AppController::handleMessagesResponse(const QJsonDocument &doc)
         if (conversationId.isEmpty()) {
             continue;
         }
+        if (!isConversationVisible(conversationId)) {
+            continue;
+        }
         const QString senderUserId = obj.value(QStringLiteral("sender_user_id")).toString();
         const QString text = obj.value(QStringLiteral("text")).toString();
         const qint64 sentUnixSec = static_cast<qint64>(obj.value(QStringLiteral("sent_unix_sec")).toDouble());
@@ -1316,6 +1378,9 @@ void AppController::addServerMessage(const QString &conversationId,
     if (trimmedId.isEmpty() || serverMsgId.trimmed().isEmpty()) {
         return;
     }
+    if (!isConversationVisible(trimmedId)) {
+        return;
+    }
 
     Message message;
     message.serverMsgId = serverMsgId;
@@ -1411,6 +1476,9 @@ void AppController::promoteConversation(const QString &conversationId)
     if (trimmed.isEmpty()) {
         return;
     }
+    if (!isConversationVisible(trimmed)) {
+        return;
+    }
     if (!m_conversations.contains(trimmed)) {
         m_conversations.insert(trimmed, {});
     }
@@ -1419,7 +1487,12 @@ void AppController::promoteConversation(const QString &conversationId)
 
 void AppController::rebuildConversationOrder()
 {
-    QStringList keys = m_conversations.keys();
+    QStringList keys;
+    for (auto it = m_conversations.constBegin(); it != m_conversations.constEnd(); ++it) {
+        if (isConversationVisible(it.key())) {
+            keys.append(it.key());
+        }
+    }
     auto scoreFor = [this](const QString &id) -> qint64 {
         const QList<Message> &messages = m_conversations.value(id);
         if (messages.isEmpty()) {
@@ -1491,6 +1564,31 @@ QString AppController::conversationSubtitle(const QString &conversationId) const
     }
 
     return QString();
+}
+
+bool AppController::isConversationVisible(const QString &conversationId) const
+{
+    const QString trimmed = conversationId.trimmed();
+    if (trimmed.isEmpty()) {
+        return false;
+    }
+
+    const QString lowered = trimmed.toLower();
+    if (lowered == QStringLiteral("corp-secure-room")) {
+        return true;
+    }
+
+    const QString myId = m_authenticatedUser.userId.trimmed();
+    if (myId.isEmpty()) {
+        return false;
+    }
+
+    if (lowered.startsWith(QStringLiteral("dm-"))) {
+        const QString myIdLower = myId.toLower();
+        return lowered.contains(myIdLower);
+    }
+
+    return false;
 }
 
 void AppController::loadCredentials()

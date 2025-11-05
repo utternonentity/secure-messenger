@@ -48,8 +48,8 @@ struct qt_meta_stringdata_AppController_t {
     char stringdata18[13];
     char stringdata19[9];
     char stringdata20[9];
-    char stringdata21[21];
-    char stringdata22[16];
+    char stringdata21[16];
+    char stringdata22[21];
     char stringdata23[18];
     char stringdata24[9];
     char stringdata25[9];
@@ -84,8 +84,8 @@ Q_CONSTINIT static const qt_meta_stringdata_AppController_t qt_meta_stringdata_A
         QT_MOC_LITERAL(255, 12),  // "authenticate"
         QT_MOC_LITERAL(268, 8),  // "nickname"
         QT_MOC_LITERAL(277, 8),  // "password"
-        QT_MOC_LITERAL(286, 20),  // "completeRegistration"
-        QT_MOC_LITERAL(307, 15),  // "certificatePath"
+        QT_MOC_LITERAL(286, 15),  // "certificatePath"
+        QT_MOC_LITERAL(302, 20),  // "completeRegistration"
         QT_MOC_LITERAL(323, 17),  // "resetRegistration"
         QT_MOC_LITERAL(341, 8),  // "authInfo"
         QT_MOC_LITERAL(350, 8),  // "userList"
@@ -116,8 +116,8 @@ Q_CONSTINIT static const qt_meta_stringdata_AppController_t qt_meta_stringdata_A
     "authenticate",
     "nickname",
     "password",
-    "completeRegistration",
     "certificatePath",
+    "completeRegistration",
     "resetRegistration",
     "authInfo",
     "userList",
@@ -137,7 +137,7 @@ Q_CONSTINIT static const uint qt_meta_data_AppController[] = {
        0,       // classname
        0,    0, // classinfo
       16,   14, // methods
-       8,  148, // properties
+       8,  150, // properties
        0,    0, // enums/sets
        0,    0, // constructors
        0,       // flags
@@ -159,9 +159,9 @@ Q_CONSTINIT static const uint qt_meta_data_AppController[] = {
       15,    2,  128,    2, 0x02,   23 /* Public */,
       16,    0,  133,    2, 0x02,   26 /* Public */,
       17,    0,  134,    2, 0x02,   27 /* Public */,
-      18,    2,  135,    2, 0x02,   28 /* Public */,
-      21,    3,  140,    2, 0x02,   31 /* Public */,
-      23,    0,  147,    2, 0x02,   35 /* Public */,
+      18,    3,  135,    2, 0x02,   28 /* Public */,
+      22,    3,  142,    2, 0x02,   32 /* Public */,
+      23,    0,  149,    2, 0x02,   36 /* Public */,
 
  // signals: parameters
     QMetaType::Void,
@@ -179,8 +179,8 @@ Q_CONSTINIT static const uint qt_meta_data_AppController[] = {
     QMetaType::Void, QMetaType::QString, QMetaType::QString,   12,   14,
     QMetaType::Void,
     QMetaType::Void,
-    QMetaType::QString, QMetaType::QString, QMetaType::QString,   19,   20,
-    QMetaType::QString, QMetaType::QString, QMetaType::QString, QMetaType::QString,   19,   20,   22,
+    QMetaType::QString, QMetaType::QString, QMetaType::QString, QMetaType::QString,   19,   20,   21,
+    QMetaType::QString, QMetaType::QString, QMetaType::QString, QMetaType::QString,   19,   20,   21,
     QMetaType::Void,
 
  // properties: name, type, flags
@@ -257,6 +257,7 @@ Q_CONSTINIT const QMetaObject AppController::staticMetaObject = { {
         QtPrivate::TypeAndForceComplete<QString, std::false_type>,
         QtPrivate::TypeAndForceComplete<const QString &, std::false_type>,
         QtPrivate::TypeAndForceComplete<const QString &, std::false_type>,
+        QtPrivate::TypeAndForceComplete<const QString &, std::false_type>,
         // method 'completeRegistration'
         QtPrivate::TypeAndForceComplete<QString, std::false_type>,
         QtPrivate::TypeAndForceComplete<const QString &, std::false_type>,
@@ -287,7 +288,7 @@ void AppController::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _i
         case 10: _t->revokeDevice((*reinterpret_cast< std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast< std::add_pointer_t<QString>>(_a[2]))); break;
         case 11: _t->refreshUsers(); break;
         case 12: _t->simulatePull(); break;
-        case 13: { QString _r = _t->authenticate((*reinterpret_cast< std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast< std::add_pointer_t<QString>>(_a[2])));
+        case 13: { QString _r = _t->authenticate((*reinterpret_cast< std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast< std::add_pointer_t<QString>>(_a[2])),(*reinterpret_cast< std::add_pointer_t<QString>>(_a[3])));
             if (_a[0]) *reinterpret_cast< QString*>(_a[0]) = std::move(_r); }  break;
         case 14: { QString _r = _t->completeRegistration((*reinterpret_cast< std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast< std::add_pointer_t<QString>>(_a[2])),(*reinterpret_cast< std::add_pointer_t<QString>>(_a[3])));
             if (_a[0]) *reinterpret_cast< QString*>(_a[0]) = std::move(_r); }  break;

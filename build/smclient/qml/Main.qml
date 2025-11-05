@@ -3,6 +3,7 @@ import QtQuick.Controls 2.15
 import QtQuick.Controls.Material 2.15
 import QtQuick.Layouts 1.15
 import QtQml 2.15
+import QtQuick.Dialogs 6.4
 
 ApplicationWindow {
     id: window
@@ -81,18 +82,22 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
 
-            Rectangle {
+            Pane {
                 anchors.centerIn: parent
-                width: Math.min(window.width - 120, 480)
-                color: panelColor
-                radius: 16
-                border.color: panelBorder
+                width: Math.min(window.width - 120, 520)
+                padding: 28
+                Material.elevation: 6
+                background: Rectangle {
+                    color: panelColor
+                    radius: 18
+                    border.color: panelBorder
+                    border.width: 1
+                }
 
                 ColumnLayout {
                     id: authForm
                     anchors.fill: parent
-                    anchors.margins: 28
-                    spacing: 18
+                    spacing: 20
 
                     property bool registrationMode: false
                     property string formError: ""
@@ -103,63 +108,111 @@ ApplicationWindow {
                             return;
                         }
                         var result = registrationMode
-                                ? (App.completeRegistration ? App.completeRegistration(authNickname.text, authPassword.text) : qsTr("Сервис недоступен"))
-                                : (App.authenticate ? App.authenticate(authNickname.text, authPassword.text) : qsTr("Сервис недоступен"));
+                                ? (App.completeRegistration
+                                           ? App.completeRegistration(authNickname.text,
+                                                                      authPassword.text,
+                                                                      authCertificate.text)
+                                           : qsTr("Сервис недоступен"))
+                                : (App.authenticate
+                                           ? App.authenticate(authNickname.text,
+                                                              authPassword.text,
+                                                              authCertificate.text)
+                                           : qsTr("Сервис недоступен"));
                         if (result && result.length > 0) {
                             formError = result;
                         } else {
                             formError = "";
                             authPassword.text = "";
+                            authCertificate.text = "";
                         }
                     }
 
                     Label {
                         text: authForm.registrationMode ? qsTr("Создайте новый профиль Secure Messenger")
                                                          : qsTr("Добро пожаловать в Secure Messenger")
-                        font.pixelSize: 22
+                        font.pixelSize: 24
                         font.bold: true
                         wrapMode: Text.WordWrap
                     }
 
                     Label {
                         text: authForm.registrationMode
-                              ? qsTr("Придумайте уникальный никнейм и пароль, чтобы зарегистрироваться.")
-                              : qsTr("Введите свой никнейм и пароль для входа в систему.")
+                              ? qsTr("Укажите никнейм, пароль и сертификат устройства для регистрации.")
+                              : qsTr("Для входа укажите никнейм, пароль и сертификат зарегистрированного устройства.")
                         color: subtleText
                         wrapMode: Text.WordWrap
                         Layout.fillWidth: true
                     }
 
-                    TextField {
-                        id: authNickname
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        placeholderText: qsTr("Никнейм")
-                        selectByMouse: true
-                        onAccepted: authPassword.forceActiveFocus()
-                        Component.onCompleted: {
-                            if (!App || !App.registered)
-                                forceActiveFocus()
-                        }
+                        spacing: 14
 
-                        Connections {
-                            target: App
-                            function onRegistrationChanged() {
-                                if (App && !App.registered) {
-                                    authNickname.forceActiveFocus()
-                                    authPassword.text = ""
-                                    authForm.formError = ""
+                        TextField {
+                            id: authNickname
+                            Layout.fillWidth: true
+                            placeholderText: qsTr("Никнейм")
+                            selectByMouse: true
+                            onAccepted: authPassword.forceActiveFocus()
+                            Component.onCompleted: {
+                                if (!App || !App.registered)
+                                    forceActiveFocus()
+                            }
+
+                            Connections {
+                                target: App
+                                function onRegistrationChanged() {
+                                    if (App && !App.registered) {
+                                        authNickname.forceActiveFocus()
+                                        authPassword.text = ""
+                                        authCertificate.text = ""
+                                        authForm.formError = ""
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    TextField {
-                        id: authPassword
-                        Layout.fillWidth: true
-                        placeholderText: qsTr("Пароль")
-                        echoMode: TextInput.Password
-                        selectByMouse: true
-                        onAccepted: authForm.performPrimaryAction()
+                        TextField {
+                            id: authPassword
+                            Layout.fillWidth: true
+                            placeholderText: qsTr("Пароль")
+                            echoMode: TextInput.Password
+                            selectByMouse: true
+                            onAccepted: authCertificate.forceActiveFocus()
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 6
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 12
+
+                                TextField {
+                                    id: authCertificate
+                                    Layout.fillWidth: true
+                                    placeholderText: qsTr("Путь к сертификату устройства (PEM/DER)")
+                                    selectByMouse: true
+                                    onAccepted: authForm.performPrimaryAction()
+                                }
+
+                                Button {
+                                    text: qsTr("Выбрать")
+                                    icon.name: "folder"
+                                    onClicked: certFileDialog.open()
+                                }
+                            }
+
+                            Label {
+                                text: authForm.registrationMode
+                                      ? qsTr("Этот сертификат будет привязан к устройству при регистрации.")
+                                      : qsTr("Мы сверим выбранный сертификат с привязанным к вашей учётной записи.")
+                                color: subtleText
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+                        }
                     }
 
                     Label {
@@ -176,9 +229,14 @@ ApplicationWindow {
 
                         Button {
                             id: primaryAction
+                            Layout.preferredWidth: 180
                             text: authForm.registrationMode ? qsTr("Зарегистрироваться") : qsTr("Войти")
                             icon.name: authForm.registrationMode ? "account-circle" : "login"
-                            enabled: authNickname.text.trim().length > 0 && authPassword.text.length > 0 && App && (authForm.registrationMode ? App.completeRegistration : App.authenticate)
+                            enabled: authNickname.text.trim().length > 0
+                                     && authPassword.text.length > 0
+                                     && authCertificate.text.trim().length > 0
+                                     && App
+                                     && (authForm.registrationMode ? App.completeRegistration : App.authenticate)
                             onClicked: authForm.performPrimaryAction()
                         }
 
@@ -187,7 +245,8 @@ ApplicationWindow {
                         Button {
                             text: qsTr("Обновить справочник")
                             icon.name: "reload"
-                            enabled: App && App.refreshUsers
+                            visible: App && App.refreshUsers
+                            enabled: visible
                             onClicked: App.refreshUsers()
                         }
                     }
@@ -212,120 +271,83 @@ ApplicationWindow {
                                 authForm.registrationMode = !authForm.registrationMode
                                 authForm.formError = ""
                                 authPassword.text = ""
+                                authCertificate.text = ""
                                 authNickname.forceActiveFocus()
                             }
                         }
                     }
 
-                    Label {
-                        text: qsTr("Доступные пользователи из локального справочника")
-                        font.pixelSize: 14
-                        font.bold: true
-                    }
-
-                    Rectangle {
+                    Pane {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 200
-                        radius: 10
-                        color: "#111827"
-                        border.color: panelBorder
+                        Layout.preferredHeight: 170
+                        padding: 12
+                        Material.elevation: 4
+                        background: Rectangle {
+                            color: "#111827"
+                            radius: 12
+                            border.color: panelBorder
+                        }
 
-                        ListView {
-                            id: directoryPreview
+                        ColumnLayout {
                             anchors.fill: parent
-                            anchors.margins: 8
-                            clip: true
                             spacing: 6
-                            model: (App && App.userList) ? App.userList : []
-                            boundsBehavior: Flickable.StopAtBounds
-                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-                            delegate: Item {
-                                width: directoryPreview.width
-                                property var entry: modelData
-                                property string userId: String(entry["userId"] || "")
-                                property string nickname: String(entry["nickname"] || "")
-                                property bool validEntry: userId.length > 0 && nickname.length > 0
-                                implicitHeight: validEntry ? previewContent.implicitHeight + 12 : 0
-                                visible: validEntry
+                            RowLayout {
+                                Layout.fillWidth: true
 
-                                Rectangle {
-                                    id: previewContent
-                                    anchors.fill: parent
-                                    anchors.margins: 4
-                                    radius: 8
-                                    color: "#1f2937"
-                                    border.color: panelBorder
+                                Label {
+                                    text: qsTr("Журнал событий")
+                                    font.pixelSize: 14
+                                    font.bold: true
+                                }
 
-                                    ColumnLayout {
+                                Item { Layout.fillWidth: true }
+
+                                ToolButton {
+                                    visible: App && App.serverLog && App.serverLog.length > 0
+                                    icon.name: "refresh"
+                                    onClicked: preregLog.positionViewAtEnd()
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: qsTr("Прокрутить к последней записи")
+                                }
+                            }
+
+                            ListView {
+                                id: preregLog
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                clip: true
+                                spacing: 4
+                                model: (App && App.serverLog) ? App.serverLog : []
+                                boundsBehavior: Flickable.StopAtBounds
+                                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                                delegate: Item {
+                                    width: preregLog.width
+                                    implicitHeight: logText.implicitHeight + 4
+
+                                    Label {
+                                        id: logText
                                         anchors.fill: parent
-                                        anchors.margins: 10
-                                        spacing: 2
-
-                                        Label {
-                                            text: nickname
-                                            font.pixelSize: 14
-                                            font.bold: true
-                                        }
+                                        anchors.margins: 2
+                                        text: String(modelData)
+                                        font.family: "monospace"
+                                        font.pixelSize: 12
+                                        color: "#d1d5db"
+                                        wrapMode: Text.WordWrap
                                     }
                                 }
                             }
                         }
-
-                        ColumnLayout {
-                            anchors.centerIn: parent
-                            width: parent.width - 32
-                            spacing: 6
-                            visible: directoryPreview.count === 0
-
-                            Label {
-                                text: qsTr("Справочник пуст. Нажмите \"Обновить справочник\" или зарегистрируйтесь, чтобы получить список пользователей.")
-                                color: subtleText
-                                wrapMode: Text.WordWrap
-                                horizontalAlignment: Text.AlignHCenter
-                            }
-                        }
                     }
+                }
 
-                    Label {
-                        text: qsTr("Журнал событий")
-                        font.pixelSize: 14
-                        font.bold: true
-                    }
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 160
-                        radius: 10
-                        color: "#111827"
-                        border.color: panelBorder
-
-                        ListView {
-                            id: preregLog
-                            anchors.fill: parent
-                            anchors.margins: 8
-                            clip: true
-                            spacing: 6
-                            model: (App && App.serverLog) ? App.serverLog : []
-                            boundsBehavior: Flickable.StopAtBounds
-                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-
-                            delegate: Item {
-                                width: preregLog.width
-                                implicitHeight: logText.implicitHeight + 4
-
-                                Label {
-                                    id: logText
-                                    anchors.fill: parent
-                                    anchors.margins: 2
-                                    text: String(modelData)
-                                    font.family: "monospace"
-                                    font.pixelSize: 12
-                                    color: "#d1d5db"
-                                    wrapMode: Text.WordWrap
-                                }
-                            }
-                        }
+                FileDialog {
+                    id: certFileDialog
+                    title: qsTr("Выберите сертификат устройства")
+                    nameFilters: [qsTr("Сертификаты (*.pem *.cer *.crt *.der)")]
+                    onAccepted: {
+                        authCertificate.text = fileUrl.toLocalFile()
                     }
                 }
             }
