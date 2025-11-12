@@ -152,11 +152,12 @@ private:
 
     Credential *findCredentialByNickname(const QString &nickname);
     const Credential *findCredentialByNickname(const QString &nickname) const;
-    
+
     Credential* findCredentialByUserId(const QString& userId);
     const Credential *findCredentialByUserId(const QString &userId) const;
 
     void setAuthBusy(bool busy);
+    QString resolveCertificatePath(const QString &path) const;
     bool loadCertificateFromFile(const QString &path, QByteArray &der, QString &error) const;
     QString sendAuthRequest(const QString &path,
                             const QString &operation,

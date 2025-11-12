@@ -84,8 +84,8 @@ ApplicationWindow {
 
             Pane {
                 anchors.centerIn: parent
-                width: Math.min(window.width - 120, 520)
-                padding: 28
+                width: Math.min(window.width - 120, 560)
+                padding: 0
                 Material.elevation: 6
                 background: Rectangle {
                     color: panelColor
@@ -94,264 +94,294 @@ ApplicationWindow {
                     border.width: 1
                 }
 
-                ColumnLayout {
-                    id: authForm
+                ScrollView {
+                    id: authScroll
                     anchors.fill: parent
-                    spacing: 20
-
-                    property bool registrationMode: false
-                    property string formError: ""
-                    property bool busy: App && App.authBusy
-
-                    function performPrimaryAction() {
-                        if (authForm.busy) {
-                            return;
-                        }
-                        if (!App) {
-                            formError = qsTr("Сервис недоступен");
-                            return;
-                        }
-                        var result = registrationMode
-                                ? (App.completeRegistration
-                                           ? App.completeRegistration(authNickname.text,
-                                                                      authPassword.text,
-                                                                      authCertificate.text)
-                                           : qsTr("Сервис недоступен"))
-                                : (App.authenticate
-                                           ? App.authenticate(authNickname.text,
-                                                              authPassword.text,
-                                                              authCertificate.text)
-                                           : qsTr("Сервис недоступен"));
-                        if (result && result.length > 0) {
-                            formError = result;
-                        } else {
-                            formError = "";
-                            authPassword.text = "";
-                            authCertificate.text = "";
-                        }
-                    }
-
-                    Label {
-                        text: authForm.registrationMode ? qsTr("Создайте новый профиль Secure Messenger")
-                                                         : qsTr("Добро пожаловать в Secure Messenger")
-                        font.pixelSize: 24
-                        font.bold: true
-                        wrapMode: Text.WordWrap
-                    }
-
-                    Label {
-                        text: authForm.registrationMode
-                              ? qsTr("Укажите никнейм, пароль и сертификат устройства для регистрации.")
-                              : qsTr("Для входа укажите никнейм, пароль и сертификат зарегистрированного устройства.")
-                        color: subtleText
-                        wrapMode: Text.WordWrap
-                        Layout.fillWidth: true
-                    }
+                    anchors.margins: 28
+                    clip: true
+                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                    contentWidth: availableWidth
 
                     ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 14
+                        id: authForm
+                        width: authScroll.availableWidth
+                        spacing: 24
 
-                        TextField {
-                            id: authNickname
+                        property bool registrationMode: false
+                        property string formError: ""
+                        property bool busy: App && App.authBusy
+
+                        function performPrimaryAction() {
+                            if (authForm.busy) {
+                                return;
+                            }
+                            if (!App) {
+                                formError = qsTr("Сервис недоступен");
+                                return;
+                            }
+                            var result = registrationMode
+                                    ? (App.completeRegistration
+                                               ? App.completeRegistration(authNickname.text,
+                                                                          authPassword.text,
+                                                                          authCertificate.text)
+                                               : qsTr("Сервис недоступен"))
+                                    : (App.authenticate
+                                               ? App.authenticate(authNickname.text,
+                                                                  authPassword.text,
+                                                                  authCertificate.text)
+                                               : qsTr("Сервис недоступен"));
+                            if (result && result.length > 0) {
+                                formError = result;
+                            } else {
+                                formError = "";
+                                authPassword.text = "";
+                                authCertificate.text = "";
+                            }
+                        }
+
+                        Label {
+                            text: authForm.registrationMode ? qsTr("Создайте новый профиль Secure Messenger")
+                                                             : qsTr("Добро пожаловать в Secure Messenger")
+                            font.pixelSize: 26
+                            font.bold: true
+                            wrapMode: Text.WordWrap
                             Layout.fillWidth: true
-                            placeholderText: qsTr("Никнейм")
-                            selectByMouse: true
-                            enabled: !authForm.busy
-                            onAccepted: authPassword.forceActiveFocus()
-                            Component.onCompleted: {
-                                if (!App || !App.registered)
-                                    forceActiveFocus()
+                        }
+
+                        Label {
+                            text: authForm.registrationMode
+                                  ? qsTr("Укажите никнейм, пароль и сертификат устройства для регистрации.")
+                                  : qsTr("Для входа укажите никнейм, пароль и сертификат зарегистрированного устройства.")
+                            color: subtleText
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                        }
+
+                        Frame {
+                            Layout.fillWidth: true
+                            background: Rectangle {
+                                color: "#111827"
+                                radius: 12
+                                border.color: panelBorder
                             }
 
-                            Connections {
-                                target: App
-                                function onRegistrationChanged() {
-                                    if (App && !App.registered) {
-                                        authNickname.forceActiveFocus()
-                                        authPassword.text = ""
-                                        authCertificate.text = ""
-                                        authForm.formError = ""
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 16
+                                spacing: 16
+
+                                TextField {
+                                    id: authNickname
+                                    Layout.fillWidth: true
+                                    placeholderText: qsTr("Никнейм")
+                                    selectByMouse: true
+                                    enabled: !authForm.busy
+                                    onAccepted: authPassword.forceActiveFocus()
+                                    Component.onCompleted: {
+                                        if (!App || !App.registered)
+                                            forceActiveFocus()
+                                    }
+
+                                    Connections {
+                                        target: App
+                                        function onRegistrationChanged() {
+                                            if (App && !App.registered) {
+                                                authNickname.forceActiveFocus()
+                                                authPassword.text = ""
+                                                authCertificate.text = ""
+                                                authForm.formError = ""
+                                            }
+                                        }
+                                    }
+                                }
+
+                                TextField {
+                                    id: authPassword
+                                    Layout.fillWidth: true
+                                    placeholderText: qsTr("Пароль")
+                                    echoMode: TextInput.Password
+                                    selectByMouse: true
+                                    enabled: !authForm.busy
+                                    onAccepted: authCertificate.forceActiveFocus()
+                                }
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 12
+
+                                        TextField {
+                                            id: authCertificate
+                                            Layout.fillWidth: true
+                                            placeholderText: qsTr("Путь к сертификату устройства (PEM/DER)")
+                                            selectByMouse: true
+                                            enabled: !authForm.busy
+                                            onAccepted: authForm.performPrimaryAction()
+                                        }
+
+                                        Button {
+                                            Layout.preferredWidth: 120
+                                            text: qsTr("Выбрать")
+                                            icon.name: "folder"
+                                            enabled: !authForm.busy
+                                            onClicked: certFileDialog.open()
+                                        }
+                                    }
+
+                                    Label {
+                                        text: authForm.registrationMode
+                                              ? qsTr("Этот сертификат будет привязан к устройству при регистрации.")
+                                              : qsTr("Мы сверим выбранный сертификат с привязанным к вашей учётной записи.")
+                                        color: subtleText
+                                        wrapMode: Text.WordWrap
+                                        Layout.fillWidth: true
                                     }
                                 }
                             }
                         }
 
-                        TextField {
-                            id: authPassword
+                        Label {
+                            visible: authForm.formError.length > 0
+                            text: authForm.formError
+                            color: "#f87171"
+                            wrapMode: Text.WordWrap
                             Layout.fillWidth: true
-                            placeholderText: qsTr("Пароль")
-                            echoMode: TextInput.Password
-                            selectByMouse: true
-                            enabled: !authForm.busy
-                            onAccepted: authCertificate.forceActiveFocus()
                         }
 
                         ColumnLayout {
                             Layout.fillWidth: true
-                            spacing: 6
+                            spacing: 12
 
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 12
 
-                                TextField {
-                                    id: authCertificate
+                                Button {
+                                    id: primaryAction
                                     Layout.fillWidth: true
-                                    placeholderText: qsTr("Путь к сертификату устройства (PEM/DER)")
-                                    selectByMouse: true
+                                    Layout.preferredWidth: 200
+                                    text: authForm.registrationMode ? qsTr("Зарегистрироваться") : qsTr("Войти")
+                                    icon.name: authForm.registrationMode ? "account-circle" : "login"
                                     enabled: !authForm.busy
-                                    onAccepted: authForm.performPrimaryAction()
+                                             && authNickname.text.trim().length > 0
+                                             && authPassword.text.length > 0
+                                             && authCertificate.text.trim().length > 0
+                                             && App
+                                             && (authForm.registrationMode ? App.completeRegistration : App.authenticate)
+                                    onClicked: authForm.performPrimaryAction()
                                 }
 
-                                Button {
-                                    text: qsTr("Выбрать")
-                                    icon.name: "folder"
-                                    enabled: !authForm.busy
-                                    onClicked: certFileDialog.open()
+                                BusyIndicator {
+                                    Layout.preferredHeight: primaryAction.implicitHeight
+                                    Layout.preferredWidth: Layout.preferredHeight
+                                    running: authForm.busy
+                                    visible: running
                                 }
                             }
+
+                            Button {
+                                Layout.alignment: Qt.AlignHCenter
+                                text: qsTr("Обновить справочник")
+                                icon.name: "reload"
+                                display: Button.TextBesideIcon
+                                visible: App && App.refreshUsers
+                                enabled: visible && !authForm.busy
+                                onClicked: App.refreshUsers()
+                            }
+                        }
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: toggleLabel.implicitHeight + 16
+                            radius: 12
+                            color: "transparent"
+                            border.color: "transparent"
 
                             Label {
-                                text: authForm.registrationMode
-                                      ? qsTr("Этот сертификат будет привязан к устройству при регистрации.")
-                                      : qsTr("Мы сверим выбранный сертификат с привязанным к вашей учётной записи.")
+                                id: toggleLabel
+                                anchors.centerIn: parent
+                                text: authForm.registrationMode ? qsTr("Уже есть аккаунт? Войдите.")
+                                                               : qsTr("Нет аккаунта? Зарегистрируйтесь.")
                                 color: subtleText
-                                wrapMode: Text.WordWrap
-                                Layout.fillWidth: true
+                                font.pixelSize: 13
                             }
-                        }
-                    }
 
-                    Label {
-                        visible: authForm.formError.length > 0
-                        text: authForm.formError
-                        color: "#f87171"
-                        wrapMode: Text.WordWrap
-                        Layout.fillWidth: true
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 12
-
-                        Button {
-                            id: primaryAction
-                            Layout.preferredWidth: 180
-                            text: authForm.registrationMode ? qsTr("Зарегистрироваться") : qsTr("Войти")
-                            icon.name: authForm.registrationMode ? "account-circle" : "login"
-                            enabled: !authForm.busy
-                                     && authNickname.text.trim().length > 0
-                                     && authPassword.text.length > 0
-                                     && authCertificate.text.trim().length > 0
-                                     && App
-                                     && (authForm.registrationMode ? App.completeRegistration : App.authenticate)
-                            onClicked: authForm.performPrimaryAction()
-                        }
-
-                        BusyIndicator {
-                            running: authForm.busy
-                            visible: running
-                            implicitHeight: primaryAction.implicitHeight
-                            implicitWidth: implicitHeight
-                        }
-
-                        Item { Layout.fillWidth: true }
-
-                        Button {
-                            text: qsTr("Обновить справочник")
-                            icon.name: "reload"
-                            visible: App && App.refreshUsers
-                            enabled: visible && !authForm.busy
-                            onClicked: App.refreshUsers()
-                        }
-                    }
-
-                    Item {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: toggleLabel.implicitHeight + 8
-
-                        Label {
-                            id: toggleLabel
-                            anchors.centerIn: parent
-                            text: authForm.registrationMode ? qsTr("Уже есть аккаунт? Войдите.")
-                                                           : qsTr("Нет аккаунта? Зарегистрируйтесь.")
-                            color: subtleText
-                            font.pixelSize: 13
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            enabled: !authForm.busy
-                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                            onClicked: {
-                                authForm.registrationMode = !authForm.registrationMode
-                                authForm.formError = ""
-                                authPassword.text = ""
-                                authCertificate.text = ""
-                                authNickname.forceActiveFocus()
-                            }
-                        }
-                    }
-
-                    Pane {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 170
-                        padding: 12
-                        Material.elevation: 4
-                        background: Rectangle {
-                            color: "#111827"
-                            radius: 12
-                            border.color: panelBorder
-                        }
-
-                        ColumnLayout {
-                            anchors.fill: parent
-                            spacing: 6
-
-                            RowLayout {
-                                Layout.fillWidth: true
-
-                                Label {
-                                    text: qsTr("Журнал событий")
-                                    font.pixelSize: 14
-                                    font.bold: true
-                                }
-
-                                Item { Layout.fillWidth: true }
-
-                                ToolButton {
-                                    visible: App && App.serverLog && App.serverLog.length > 0
-                                    icon.name: "refresh"
-                                    onClicked: preregLog.positionViewAtEnd()
-                                    ToolTip.visible: hovered
-                                    ToolTip.text: qsTr("Прокрутить к последней записи")
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: !authForm.busy
+                                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                onClicked: {
+                                    authForm.registrationMode = !authForm.registrationMode
+                                    authForm.formError = ""
+                                    authPassword.text = ""
+                                    authCertificate.text = ""
+                                    authNickname.forceActiveFocus()
                                 }
                             }
+                        }
 
-                            ListView {
-                                id: preregLog
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                clip: true
-                                spacing: 4
-                                model: (App && App.serverLog) ? App.serverLog : []
-                                boundsBehavior: Flickable.StopAtBounds
-                                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                        Frame {
+                            Layout.fillWidth: true
+                            Layout.minimumHeight: 160
+                            Layout.maximumHeight: Math.max(180, window.height * 0.25)
+                            background: Rectangle {
+                                color: "#111827"
+                                radius: 12
+                                border.color: panelBorder
+                            }
 
-                                delegate: Item {
-                                    width: preregLog.width
-                                    implicitHeight: logText.implicitHeight + 4
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 12
+                                spacing: 8
+
+                                RowLayout {
+                                    Layout.fillWidth: true
 
                                     Label {
-                                        id: logText
-                                        anchors.fill: parent
-                                        anchors.margins: 2
-                                        text: String(modelData)
-                                        font.family: "monospace"
-                                        font.pixelSize: 12
-                                        color: "#d1d5db"
-                                        wrapMode: Text.WordWrap
+                                        text: qsTr("Журнал событий")
+                                        font.pixelSize: 14
+                                        font.bold: true
+                                    }
+
+                                    Item { Layout.fillWidth: true }
+
+                                    ToolButton {
+                                        visible: App && App.serverLog && App.serverLog.length > 0
+                                        icon.name: "refresh"
+                                        onClicked: preregLog.positionViewAtEnd()
+                                        ToolTip.visible: hovered
+                                        ToolTip.text: qsTr("Прокрутить к последней записи")
+                                    }
+                                }
+
+                                ListView {
+                                    id: preregLog
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    clip: true
+                                    spacing: 4
+                                    model: (App && App.serverLog) ? App.serverLog : []
+                                    boundsBehavior: Flickable.StopAtBounds
+                                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                                    delegate: Item {
+                                        width: preregLog.width
+                                        implicitHeight: logText.implicitHeight + 4
+
+                                        Label {
+                                            id: logText
+                                            anchors.fill: parent
+                                            anchors.margins: 2
+                                            text: String(modelData)
+                                            font.family: "monospace"
+                                            font.pixelSize: 12
+                                            color: "#d1d5db"
+                                            wrapMode: Text.WordWrap
+                                        }
                                     }
                                 }
                             }
@@ -359,7 +389,7 @@ ApplicationWindow {
                     }
                 }
 
-               FileDialog {
+                FileDialog {
                     id: certFileDialog
                     title: qsTr("Выберите сертификат устройства")
                     nameFilters: [qsTr("Сертификаты (*.pem *.cer *.crt *.der)")]
@@ -367,7 +397,7 @@ ApplicationWindow {
                         // Qt 6: selectedFile (url) или selectedFiles (list<url>)
                         var u = certFileDialog.selectedFile
                         if (!u && certFileDialog.selectedFiles && certFileDialog.selectedFiles.length > 0)
-                        u = certFileDialog.selectedFiles[0]
+                            u = certFileDialog.selectedFiles[0]
 
                         if (u) {
                             // универсально: если это QUrl — toLocalFile(); иначе строка

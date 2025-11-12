@@ -1803,11 +1803,52 @@ void AppController::setAuthBusy(bool busy)
     emit authBusyChanged();
 }
 
+QString AppController::resolveCertificatePath(const QString &path) const
+{
+    QString trimmed = path.trimmed();
+    if (trimmed.isEmpty()) {
+        return trimmed;
+    }
+
+    const QUrl candidateUrl(trimmed);
+    if (candidateUrl.isValid() && !candidateUrl.scheme().isEmpty()) {
+        if (candidateUrl.scheme().compare(QStringLiteral("file"), Qt::CaseInsensitive) == 0) {
+            const QString local = candidateUrl.toLocalFile();
+            if (!local.isEmpty()) {
+                trimmed = local;
+            }
+        } else {
+            return trimmed;
+        }
+    }
+
+    if (trimmed == QStringLiteral("~")) {
+        trimmed = QDir::homePath();
+    } else if (trimmed.startsWith(QStringLiteral("~/"))) {
+        QDir homeDir = QDir::home();
+        trimmed = homeDir.filePath(trimmed.mid(2));
+    }
+
+    QFileInfo info(trimmed);
+    if (!info.isAbsolute()) {
+        trimmed = QDir::current().absoluteFilePath(trimmed);
+    } else {
+        trimmed = info.absoluteFilePath();
+    }
+
+    return QDir::cleanPath(trimmed);
+}
+
 bool AppController::loadCertificateFromFile(const QString &path, QByteArray &der, QString &error) const
 {
-    QFile certFile(path);
-    if (!certFile.exists() || !certFile.open(QIODevice::ReadOnly)) {
-        error = tr("Не удалось прочитать сертификат");
+    const QString resolvedPath = resolveCertificatePath(path);
+    QFile certFile(resolvedPath);
+    if (!certFile.exists()) {
+        error = tr("Файл сертификата не найден: %1").arg(resolvedPath);
+        return false;
+    }
+    if (!certFile.open(QIODevice::ReadOnly)) {
+        error = tr("Не удалось прочитать сертификат: %1").arg(certFile.errorString());
         return false;
     }
     const QByteArray certData = certFile.readAll();
@@ -1865,15 +1906,27 @@ QString AppController::sendAuthRequest(const QString &path,
     const QByteArray responseBytes = reply->readAll();
     const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     const QString errorText = reply->errorString();
+    const QString serverMsg = QString::fromUtf8(responseBytes).trimmed();
     reply->deleteLater();
 
     if (networkError != QNetworkReply::NoError) {
-        return tr("%1: ошибка запроса: %2").arg(operation, errorText);
+        if (networkError == QNetworkReply::AuthenticationRequiredError) {
+            if (!serverMsg.isEmpty()) {
+                return tr("%1: %2").arg(operation, serverMsg);
+            }
+            return tr("%1: сервер запросил HTTP-аутентификацию").arg(operation);
+        }
     }
     if (statusCode >= 400) {
-        const QString serverMsg = QString::fromUtf8(responseBytes).trimmed();
+        
         if (!serverMsg.isEmpty()) {
             return tr("%1: %2").arg(operation, serverMsg);
+        }
+        if (statusCode == 401 && networkError == QNetworkReply::AuthenticationRequiredError) {
+            return tr("%1: проверьте никнейм и пароль").arg(operation);
+        }
+        if (networkError != QNetworkReply::NoError && !errorText.isEmpty()) {
+            return tr("%1: ошибка запроса: %2").arg(operation, errorText);
         }
         return tr("%1: сервер вернул ошибку (%2)").arg(operation).arg(statusCode);
     }
