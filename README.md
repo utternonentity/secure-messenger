@@ -1,134 +1,272 @@
-# Secure Messenger — MVP Skeleton
+# Secure Messenger
 
-## Предпосылки
-- офлайн‑сборка возможна при наличии локальных зеркал/артефактов.
-- сервер: Go 1.22+, `protoc` + плагины go/grpc.
-- клиент: Qt 6.5+ (Core, Qml, Quick), CMake 3.22+.
+Secure Messenger — это минимально жизнеспособный пример корпоративного мессенджера с mTLS-авторизацией устройств. В репозитории есть:
 
-## Генерация gRPC артефактов
-Запустите генерацию protobuf перед сборкой серверной части и клиентов:
+- сервер на Go (`server/`), предоставляющий gRPC и HTTP API;
+- Qt/QML-клиент (`client-qt/`);
+- protobuf-схемы (`proto/`) и генераторы (`build-scripts/`).
+
+Документ описывает полный цикл запуска сервера на собственном узле, выпуск сертификатов, передачу их пользователям, регистрацию новых аккаунтов и работу с клиентом.
+
+## 1. Требования
+
+### Общие
+- Возможность сборки без доступа в интернет (заготовьте артефакты заранее при необходимости).
+- `git`, `cmake`, `ninja` (или `make`).
+
+### Сервер
+- Go 1.22 или новее.
+- `protoc` 3.21+ и плагины `protoc-gen-go`, `protoc-gen-go-grpc`.
+- OpenSSL 1.1+ для генерации сертификатов.
+
+### Клиент
+- Qt 6.5+ (модули Core, Qml, Quick).
+- Компилятор C++17 (gcc/clang/msvc).
+
+## 2. Структура репозитория
+- `build-scripts/` — скрипты генерации protobuf артефактов.
+- `client-qt/` — исходники демонстрационного клиента.
+- `data/` — файлы БД сервера (создаются/обновляются при запуске).
+- `proto/` — gRPC/HTTP схемы.
+- `server/` — код серверного приложения.
+
+## 3. Генерация gRPC артефактов
+Перед первой сборкой синхронизируйте protobuf-заготовки:
 
 ```bash
-# Linux
+# Linux/macOS
 bash build-scripts/gen_proto.sh
 
 # Windows
 powershell -ExecutionPolicy Bypass -File build-scripts/gen_proto.ps1
 ```
 
-## Подготовка тестовых сертификатов для mTLS
-Сервер и клиенты обмениваются сообщениями только через mTLS. Для локальной демонстрации можно выпустить собственные сертификаты при помощи `openssl`.
+Команда пересоздаст файлы в `server/internal/gen` и клиентские stubs.
 
-1. Создайте рабочую папку и корневой центр сертификации (CA):
-   ```bash
-   mkdir -p certs
-   openssl genrsa -out certs/rootCA.key 4096
-   openssl req -x509 -new -key certs/rootCA.key -sha256 -days 365 -out certs/rootCA.pem \
-     -subj "/CN=SM Demo Root"
-   cp certs/rootCA.pem certs/client_ca.pem   # доверенный CA для клиентов
-   ```
-2. Выпустите сертификат сервера (`server.pem`) с SAN `localhost` и `127.0.0.1`:
-   ```bash
-   cat > certs/server.cnf <<'EOF'
-   [req]
-   default_bits = 4096
-   prompt = no
-   default_md = sha256
-   req_extensions = req_ext
-   distinguished_name = dn
+## 4. Сборка
 
-   [dn]
-   CN = secure-messenger.local
-
-   [req_ext]
-   subjectAltName = @alt_names
-
-   [alt_names]
-   DNS.1 = secure-messenger.local
-   DNS.2 = localhost
-   IP.1 = 127.0.0.1
-   EOF
-
-   openssl genrsa -out certs/server.key 4096
-   openssl req -new -key certs/server.key -out certs/server.csr -config certs/server.cnf
-   openssl x509 -req -in certs/server.csr -CA certs/rootCA.pem -CAkey certs/rootCA.key -CAcreateserial \
-     -out certs/server.pem -days 365 -sha256 -extensions req_ext -extfile certs/server.cnf
-   ```
-3. Выпустите клиентский сертификат пользователя. Он понадобится при регистрации и для последующих подключений по mTLS:
-   ```bash
-   cat > certs/user-alice.cnf <<'EOF'
-   [req]
-   default_bits = 4096
-   prompt = no
-   default_md = sha256
-   req_extensions = req_ext
-   distinguished_name = dn
-
-   [dn]
-   CN = Alice Doe
-
-   [req_ext]
-   subjectAltName = email:alice@example.org
-   EOF
-
-   openssl genrsa -out certs/user-alice.key 4096
-   openssl req -new -key certs/user-alice.key -out certs/user-alice.csr -config certs/user-alice.cnf
-   openssl x509 -req -in certs/user-alice.csr -CA certs/rootCA.pem -CAkey certs/rootCA.key -CAcreateserial \
-     -out certs/user-alice.pem -days 365 -sha256 -extensions req_ext -extfile certs/user-alice.cnf
-   ```
-
-Эти шаги можно повторить для любого числа пользователей, меняя CN и дополнительные поля. Файлы `*.pem` копируются на соответствующие
- узлы, а `client_ca.pem` устанавливается как доверенный корень на сервере. При регистрации новый пользователь передает DER-кодированный
- сертификат в base64 (см. раздел про HTTP API ниже).
-
-## Сборка и запуск сервера
+### Сервер
 ```bash
 cd server
 go build ./cmd/server
-
-# Запуск (пути и адреса можно переопределять флагами/переменными окружения)
-SM_TLS_CERT=../certs/server.pem \
-SM_TLS_KEY=../certs/server.key \
-SM_TLS_CLIENT_CA=../certs/client_ca.pem \
-SM_LISTEN_ADDR=:8443 \
-./server --http-listen :8080
 ```
 
-### Переменные окружения сервера
-- `SM_LISTEN_ADDR` — адрес и порт gRPC сервера (по умолчанию `:8443`).
-- `SM_TLS_CERT` — путь к PEM-сертификату сервера (по умолчанию `/etc/sm/certs/server.pem`).
-- `SM_TLS_KEY` — путь к приватному ключу сервера (по умолчанию `/etc/sm/certs/server.key`).
-- `SM_TLS_CLIENT_CA` — набор доверенных клиентских CA (по умолчанию `/etc/sm/certs/client_ca.pem`).
-- HTTP API для истории сообщений и публикации новых записей слушает адрес, переданный флагом `--http-listen` (по умолчанию `:8080`).
-- Пути к файлам хранилищ можно задать флагами `--store` и `--identity-store`, если требуется нестандартный путь.
+Бинарный файл `server` появится в каталоге `server/`.
 
-Идентификационные и журнальные БД (`data/identity_store.json`, `data/messages.db`) создаются автоматически при первом запуске сервера. Их можно переопределить флагами `--identity-store` и `--store`.
+### Клиент Qt
+```bash
+cmake -S client-qt -B build/client-qt -GNinja
+cmake --build build/client-qt
+```
 
-> ⚠️ Начиная с этой версии сервер всегда ищет базы данных относительно корня репозитория. Если у вас остались старые копии в `server/data/` или `server/sm_messages.db`, они больше не используются. Удалите их во избежание путаницы:
-> - `server/data/identity_store.json` — устаревшая копия справочника пользователей.
-> - `server/data/messages.db` — устаревшая копия истории сообщений.
-> - `server/sm_messages.db` — временный файл, не задействованный в приложении.
+Исполняемый файл располагается в `build/client-qt/sm_client` (путь может отличаться на Windows/macOS).
 
-## Подключение клиентов и обмен сообщениями
-1. На каждом устройстве установите Qt 6.5+ и соберите демонстрационный клиент:
+## 5. Настройка серверного узла
+
+1. Создайте рабочий каталог и структуру хранения сертификатов и данных:
    ```bash
-   cmake -S client-qt -B build/client-qt -GNinja
-   cmake --build build/client-qt
+   sudo mkdir -p /opt/secure-messenger/{bin,certs,data,logs}
+   sudo chown -R $USER: /opt/secure-messenger
    ```
-2. Убедитесь, что сервер запущен и HTTP API доступен (по умолчанию `https://<host>:8080` при использовании mTLS, либо `http://` при тестовом запуске без прокси).
-3. Настройте клиент на использование нужного HTTP-адреса. По умолчанию используется `http://127.0.0.1:8080`. Чтобы переключиться на удалённый сервер, перед запуском задайте
+2. Скопируйте собранный сервер:
    ```bash
-   export SM_HTTP_API="http://10.0.0.5:8080"
-   export SM_AUTH_USER_ID="user-0002"   # (опционально) выбрать пользователя каталога
+   cp server/server /opt/secure-messenger/bin/
+   ```
+3. Определите переменные окружения (например, в `/etc/secure-messenger.env`):
+   ```bash
+   cat <<'ENV' | sudo tee /etc/secure-messenger.env
+   SM_LISTEN_ADDR=:8443
+   SM_TLS_CERT=/opt/secure-messenger/certs/server.pem
+   SM_TLS_KEY=/opt/secure-messenger/certs/server.key
+   SM_TLS_CLIENT_CA=/opt/secure-messenger/certs/client_ca.pem
+   SM_STORE=/opt/secure-messenger/data/messages.db
+   SM_IDENTITY_STORE=/opt/secure-messenger/data/identity_store.json
+   ENV
+   ```
+4. (Опционально) создайте `systemd` юнит `/etc/systemd/system/secure-messenger.service`:
+   ```ini
+   [Unit]
+   Description=Secure Messenger Server
+   After=network.target
+
+   [Service]
+   EnvironmentFile=/etc/secure-messenger.env
+   ExecStart=/opt/secure-messenger/bin/server --http-listen :8080
+   WorkingDirectory=/opt/secure-messenger
+   Restart=on-failure
+   StandardOutput=append:/opt/secure-messenger/logs/server.log
+   StandardError=append:/opt/secure-messenger/logs/server.log
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+   Активируйте сервис:
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now secure-messenger.service
+   ```
+
+Для ручного запуска используйте:
+```bash
+cd /opt/secure-messenger
+SM_TLS_CERT=certs/server.pem \
+SM_TLS_KEY=certs/server.key \
+SM_TLS_CLIENT_CA=certs/client_ca.pem \
+SM_LISTEN_ADDR=:8443 \
+SM_STORE=data/messages.db \
+SM_IDENTITY_STORE=data/identity_store.json \
+./bin/server --http-listen :8080
+```
+
+HTTP API по умолчанию слушает `:8080`, gRPC — `:8443`.
+
+## 6. Выпуск сертификатов
+
+Сервер и клиенты идентифицируются через mTLS. Один корневой центр сертификации (CA) выпускает сертификаты для сервера и устройств.
+
+### 6.1 Создание корневого CA
+```bash
+mkdir -p /opt/secure-messenger/certs
+cd /opt/secure-messenger/certs
+openssl genrsa -out rootCA.key 4096
+openssl req -x509 -new -key rootCA.key -sha256 -days 825 -out rootCA.pem \
+  -subj "/CN=Secure Messenger Root"
+cp rootCA.pem client_ca.pem
+```
+
+### 6.2 Выпуск серверного сертификата
+```bash
+cat > server.cnf <<'EOF'
+[req]
+default_bits = 4096
+prompt = no
+default_md = sha256
+req_extensions = req_ext
+distinguished_name = dn
+
+[dn]
+CN = secure-messenger.internal
+
+[req_ext]
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = secure-messenger.internal
+DNS.2 = localhost
+IP.1 = 127.0.0.1
+EOF
+
+openssl genrsa -out server.key 4096
+openssl req -new -key server.key -out server.csr -config server.cnf
+openssl x509 -req -in server.csr -CA rootCA.pem -CAkey rootCA.key -CAcreateserial \
+  -out server.pem -days 825 -sha256 -extensions req_ext -extfile server.cnf
+```
+
+Поместите `server.pem` и `server.key` в `/opt/secure-messenger/certs/`. `client_ca.pem` остаётся рядом и используется сервером для проверки клиентских сертификатов.
+
+### 6.3 Выпуск клиентских сертификатов
+Для каждого устройства повторяйте шаблон, меняя `CN`, email и имя файла:
+
+```bash
+CLIENT_ID=alice-laptop
+cat > client-${CLIENT_ID}.cnf <<'EOF'
+[req]
+default_bits = 4096
+prompt = no
+default_md = sha256
+req_extensions = req_ext
+distinguished_name = dn
+
+[dn]
+CN = Alice Doe
+
+[req_ext]
+subjectAltName = email:alice@example.org
+EOF
+
+openssl genrsa -out client-${CLIENT_ID}.key 4096
+openssl req -new -key client-${CLIENT_ID}.key -out client-${CLIENT_ID}.csr -config client-${CLIENT_ID}.cnf
+openssl x509 -req -in client-${CLIENT_ID}.csr -CA rootCA.pem -CAkey rootCA.key -CAcreateserial \
+  -out client-${CLIENT_ID}.pem -days 365 -sha256 -extensions req_ext -extfile client-${CLIENT_ID}.cnf
+```
+
+### 6.4 Передача сертификатов пользователям
+Пользовательскому устройству нужны:
+
+- личный сертификат `client-<id>.pem` и приватный ключ `client-<id>.key`;
+- корневой сертификат `rootCA.pem` для проверки сервера.
+
+Упакуйте материалы в PKCS#12 контейнер или зашифрованный архив, а затем передайте по защищённым каналам:
+
+```bash
+openssl pkcs12 -export \
+  -inkey client-${CLIENT_ID}.key \
+  -in client-${CLIENT_ID}.pem \
+  -certfile rootCA.pem \
+  -out client-${CLIENT_ID}.p12
+```
+
+Пароль от контейнера передавайте отдельным каналом связи. Секретный ключ `rootCA.key` должен храниться только на сервере выпускного центра и не распространяться.
+
+## 7. Регистрация пользователей
+
+Сервер сопоставляет устройства с пользователями по клиентскому сертификату. Регистрация возможна:
+
+### 7.1 Через HTTP API
+1. На устройстве пользователя преобразуйте сертификат в DER и закодируйте в base64:
+   ```bash
+   openssl x509 -in client-alice.pem -outform DER | base64 -w0 > alice.der.b64
+   ```
+2. Отправьте запрос на `/api/auth/register` (используйте защищённый канал или локальный доступ):
+   ```bash
+   curl -X POST https://your-server:8080/api/auth/register \
+     --cacert rootCA.pem \
+     --cert client-alice.pem --key client-alice.key \
+     -H 'Content-Type: application/json' \
+     -d @<(cat <<'JSON'
+   {
+     "nickname": "alice",
+     "certificate": "$(cat alice.der.b64)"
+   }
+   JSON
+   )
+   ```
+   Ответ содержит `user_id`, который нужно сохранить на устройстве.
+
+### 7.2 Через Qt-клиент
+В форме регистрации укажите:
+- путь к клиентскому сертификату (PEM или DER);
+- приватный ключ, если он хранится отдельно;
+- желаемый никнейм.
+
+Клиент отправит сертификат на `/api/auth/register`, сохранит выданный `user_id` и будет использовать его при подключениях.
+
+## 8. Настройка и запуск клиента
+
+1. Соберите приложение (см. раздел 4).
+2. Скопируйте выданные файлы на устройство пользователя и настройте права доступа.
+3. Перед запуском задайте параметры окружения (пример для Linux/macOS):
+   ```bash
+   export SM_HTTP_API="https://your-server:8080"
+   export SM_TLS_CERT="/path/to/client-alice.pem"
+   export SM_TLS_KEY="/path/to/client-alice.key"
+   export SM_TRUST_ANCHOR="/path/to/rootCA.pem"
+   export SM_AUTH_USER_ID="user-0001"   # выданный идентификатор
    ./build/client-qt/sm_client
    ```
-   При старте приложение загружает историю сообщений с сервера, отображает её в UI и каждые несколько секунд запрашивает новые записи. Любое отправленное сообщение сразу уходит на сервер и становится доступным для других клиентов.
-4. Повторите шаги на другом устройстве (или запустите ещё один экземпляр на той же машине), указав другую переменную `SM_AUTH_USER_ID`. Оба клиента будут видеть общий список сообщений из файла `data/messages.db`, который хранится на сервере и автоматически пополняется.
 
-### HTTP API сообщений
-HTTP интерфейс позволяет интегрировать любые дополнительные клиенты. Основные запросы:
-- `GET /api/messages?since_id=msg-5` — возвращает JSON со списком сообщений (опционально только с указанного идентификатора).
-- `POST /api/messages` — принимает JSON вида:
+Интерфейс загрузит историю сообщений, покажет текущий диалог и будет регулярно опрашивать `/api/messages`. Отправленные сообщения уходят на сервер через `POST /api/messages`.
+
+## 9. Эксплуатация
+
+- Файлы `messages.db` и `identity_store.json` располагаются в директории, указанной переменными `SM_STORE` и `SM_IDENTITY_STORE`. Настройте резервное копирование.
+- Для добавления нового устройства выпустите новый сертификат, повторите регистрацию и передайте его пользователю.
+- Логи сервера перенаправляются в `logs/server.log`, если используется рекомендованный `systemd` юнит.
+
+## 10. HTTP и gRPC интерфейсы
+
+- `GET /api/messages?since_id=msg-5` — получить историю сообщений.
+- `POST /api/messages` — отправить сообщение:
   ```json
   {
     "conversation_id": "corp-secure-room",
@@ -136,54 +274,13 @@ HTTP интерфейс позволяет интегрировать любые
     "text": "Привет!"
   }
   ```
-  В ответ сервер возвращает идентификатор сохранённого сообщения и отметку времени.
+- `POST /api/auth/register` — зарегистрировать сертификат пользователя.
 
-### HTTP API регистрации
-Сервер назначает пользователя на основе клиентского сертификата. Один и тот же сертификат всегда будет авторизован как один и тот же пользователь, поэтому важно регистрировать устройство до первого подключения.
+Для отладки доступен gRPC с методами `sm.v1.Messaging/Pull` и `sm.v1.Messaging/Send`. Подключайтесь через `grpcurl`, указывая `-cacert`, `-cert`, `-key` и адрес `localhost:8443` или удалённый хост.
 
-Для добавления нового пользователя отправьте POST-запрос на `/api/auth/register` с JSON:
-```json
-{
-  "nickname": "alice",
-  "certificate": "<DER сертификата в base64>"
-}
-```
-Получить base64-строку можно так:
-```bash
-openssl x509 -in certs/user-alice.pem -outform DER | base64 -w0
-```
-В ответе вернётся `user_id`, присвоенный сервером. Этот же сертификат используется при mTLS-подключении.
+## 11. Дальнейшее развитие
 
-### Регистрация через Qt-клиент
-Форма регистрации в демонстрационном приложении теперь требует путь к клиентскому сертификату. Укажите PEM- или DER-файл, выданный доверенным CA (см. раздел выше), а также желаемый никнейм и пароль. Клиент отправит DER-представление сертификата на HTTP API и сохранит присвоенный `user_id`.
+- Реализуйте полноценные криптопримитивы поверх `ciphertext`.
+- Добавьте сценарии развёртывания (Docker, Kubernetes, Ansible) и обновите документацию.
+- Организуйте перевыпуск сертификатов заранее (CRL/OCSP не реализованы).
 
-Если попробовать войти без сертификата, сервер сопоставит соединение с ближайшим зарегистрированным устройством, и в интерфейсе можно оказаться под чужим профилем. Использование сертификата устраняет эту проблему: каждое устройство подтверждает свою личность и получает только собственный идентификатор.
-
-
-### Примеры для gRPC (опционально)
-Для глубокой интеграции остаётся доступен исходный gRPC интерфейс. Ниже приведены команды `grpcurl` для тестирования `Pull`/`Send` в обход HTTP API.
-- Подписка на канал:
-  ```bash
-  grpcurl -cacert certs/rootCA.pem -cert certs/device-laptop.pem -key certs/device-laptop.key \
-    -d '{"sinceServerMsgId":"","conversationIds":["corp-secure-room"]}' \
-    localhost:8443 sm.v1.Messaging/Pull
-  ```
-- Отправка сообщения:
-  ```bash
-  grpcurl -cacert certs/rootCA.pem -cert certs/device-phone.pem -key certs/device-phone.key \
-    -d '{
-          "meta": {
-            "conversationId": "corp-secure-room",
-            "senderUserId": "user-ivan",
-            "senderDeviceId": "device-phone",
-            "sentUnixSec": 1700000000
-          },
-          "ciphertext": "dGVtb19lbmNyeXB0ZWRfZGF0YQ=="
-        }' \
-    localhost:8443 sm.v1.Messaging/Send
-  ```
-
-## Что дальше
-- Реализуйте gRPC-вызовы в Qt-клиенте, используя сгенерированные protobuf-стабы.
-- Добавьте хранение секретов и реальные криптопримитивы поверх `ciphertext`.
-- Расширьте README собственными сценариями деплоя (Docker/Kubernetes, systemd и т.д.), если они появятся.
