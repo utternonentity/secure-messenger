@@ -224,6 +224,20 @@
                         "stored": true,
                         "type": "QString",
                         "user": false
+                    },
+                    {
+                        "constant": false,
+                        "designable": true,
+                        "final": false,
+                        "index": 8,
+                        "name": "authBusy",
+                        "notify": "authBusyChanged",
+                        "read": "isAuthBusy",
+                        "required": false,
+                        "scriptable": true,
+                        "stored": true,
+                        "type": "bool",
+                        "user": false
                     }
                 ],
                 "qualifiedClassName": "AppController",
@@ -261,6 +275,11 @@
                     {
                         "access": "public",
                         "name": "registrationChanged",
+                        "returnType": "void"
+                    },
+                    {
+                        "access": "public",
+                        "name": "authBusyChanged",
                         "returnType": "void"
                     }
                 ],

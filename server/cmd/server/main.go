@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -94,6 +95,8 @@ func main() {
 		log.Fatalf("init messaging service: %v", err)
 	}
 
+	tokenManager := auth.NewTokenManager(30 * time.Minute)
+
 	authService, err := auth.NewService(identityManager)
 	if err != nil {
 		log.Fatalf("init auth service: %v", err)
@@ -107,11 +110,11 @@ func main() {
 	smv1.RegisterDirectoryServer(srv, directoryService)
 	smv1.RegisterMessagingServer(srv, messagingService)
 
-	httpMessagesHandler, err := messaging.NewHTTPHandler(messagingService)
+	httpMessagesHandler, err := messaging.NewHTTPHandler(messagingService, tokenManager)
 	if err != nil {
 		log.Fatalf("init messaging http handler: %v", err)
 	}
-	httpAuthHandler, err := auth.NewHTTPHandler(identityManager)
+	httpAuthHandler, err := auth.NewHTTPHandler(identityManager, tokenManager)
 	if err != nil {
 		log.Fatalf("init auth http handler: %v", err)
 	}

@@ -11,11 +11,14 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/utternonentity/secure-messenger/server/internal/auth"
 	smv1 "github.com/utternonentity/secure-messenger/server/internal/gen/sm/v1"
+	"github.com/utternonentity/secure-messenger/server/internal/identity"
 )
 
 type httpServer struct {
-	svc *Service
+	svc    *Service
+	tokens auth.TokenValidator
 }
 
 type httpMessage struct {
@@ -46,11 +49,14 @@ type sendResponse struct {
 }
 
 // NewHTTPHandler exposes a minimal JSON API for history sync and message publishing.
-func NewHTTPHandler(svc *Service) (http.Handler, error) {
+func NewHTTPHandler(svc *Service, tokens auth.TokenValidator) (http.Handler, error) {
 	if svc == nil {
 		return nil, errors.New("messaging: http handler requires a service instance")
 	}
-	server := &httpServer{svc: svc}
+	if tokens == nil {
+		return nil, errors.New("messaging: http handler requires a token validator")
+	}
+	server := &httpServer{svc: svc, tokens: tokens}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/messages", server.handleMessages)
 	mux.HandleFunc("/healthz", server.handleHealth)
@@ -63,17 +69,23 @@ func (s *httpServer) handleHealth(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *httpServer) handleMessages(w http.ResponseWriter, r *http.Request) {
+	ident, status, err := s.authenticate(r)
+	if err != nil {
+		http.Error(w, http.StatusText(status), status)
+		return
+	}
+
 	switch r.Method {
 	case http.MethodGet:
-		s.handleList(w, r)
+		s.handleList(w, r, ident)
 	case http.MethodPost:
-		s.handleSend(w, r)
+		s.handleSend(w, r, ident)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
-func (s *httpServer) handleList(w http.ResponseWriter, r *http.Request) {
+func (s *httpServer) handleList(w http.ResponseWriter, r *http.Request, _ identity.Identity) {
 	sinceParam := strings.TrimSpace(r.URL.Query().Get("since_id"))
 	convParam := strings.TrimSpace(r.URL.Query().Get("conversation_id"))
 
@@ -116,7 +128,7 @@ func (s *httpServer) handleList(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, resp)
 }
 
-func (s *httpServer) handleSend(w http.ResponseWriter, r *http.Request) {
+func (s *httpServer) handleSend(w http.ResponseWriter, r *http.Request, ident identity.Identity) {
 	var payload sendRequest
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		http.Error(w, "invalid json payload", http.StatusBadRequest)
@@ -126,8 +138,16 @@ func (s *httpServer) handleSend(w http.ResponseWriter, r *http.Request) {
 	payload.SenderUserID = strings.TrimSpace(payload.SenderUserID)
 	payload.Text = strings.TrimSpace(payload.Text)
 
-	if payload.ConversationID == "" || payload.SenderUserID == "" || payload.Text == "" {
-		http.Error(w, "conversation_id, sender_user_id and text are required", http.StatusBadRequest)
+	if payload.ConversationID == "" || payload.Text == "" {
+		http.Error(w, "conversation_id and text are required", http.StatusBadRequest)
+		return
+	}
+
+	if payload.SenderUserID == "" {
+		payload.SenderUserID = ident.UserID
+	}
+	if !strings.EqualFold(payload.SenderUserID, ident.UserID) {
+		http.Error(w, "sender_user_id does not match authenticated user", http.StatusForbidden)
 		return
 	}
 
@@ -154,6 +174,25 @@ func (s *httpServer) handleSend(w http.ResponseWriter, r *http.Request) {
 		SentUnixSec:    env.GetMeta().GetSentUnixSec(),
 		Text:           payload.Text,
 	})
+}
+
+func (s *httpServer) authenticate(r *http.Request) (identity.Identity, int, error) {
+	header := r.Header.Get("Authorization")
+	token, err := auth.ParseBearerToken(header)
+	if err != nil {
+		return identity.Identity{}, http.StatusUnauthorized, err
+	}
+	ident, _, err := s.tokens.ValidateToken(token)
+	if err != nil {
+		if errors.Is(err, auth.ErrInvalidToken) {
+			return identity.Identity{}, http.StatusUnauthorized, err
+		}
+		return identity.Identity{}, http.StatusInternalServerError, err
+	}
+	if strings.TrimSpace(ident.UserID) == "" {
+		return identity.Identity{}, http.StatusForbidden, errors.New("messaging: token missing user id")
+	}
+	return ident, http.StatusOK, nil
 }
 
 func writeJSON(w http.ResponseWriter, payload any) {

@@ -20,7 +20,7 @@ func TestValidateCertificateMatchesRegisteredUser(t *testing.T) {
 	mgr := newTestManager(t)
 
 	cert := newTestCertificate(t, "Alice")
-	profile, err := mgr.RegisterUser(context.Background(), "Alice", cert.Raw)
+	profile, err := mgr.RegisterUser(context.Background(), "Alice", "passw0rd", cert.Raw)
 	if err != nil {
 		t.Fatalf("RegisterUser: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestValidateCertificateRejectsUnknown(t *testing.T) {
 	mgr := newTestManager(t)
 
 	cert1 := newTestCertificate(t, "Alice")
-	if _, err := mgr.RegisterUser(context.Background(), "Alice", cert1.Raw); err != nil {
+	if _, err := mgr.RegisterUser(context.Background(), "Alice", "passw0rd", cert1.Raw); err != nil {
 		t.Fatalf("RegisterUser: %v", err)
 	}
 
@@ -69,7 +69,7 @@ func TestRegisterUser(t *testing.T) {
 	mgr := newTestManager(t)
 
 	certAlice := newTestCertificate(t, "Alice")
-	profile, err := mgr.RegisterUser(context.Background(), "Alice", certAlice.Raw)
+	profile, err := mgr.RegisterUser(context.Background(), "Alice", "passw0rd", certAlice.Raw)
 	if err != nil {
 		t.Fatalf("RegisterUser: %v", err)
 	}
@@ -84,15 +84,15 @@ func TestRegisterUser(t *testing.T) {
 		t.Fatalf("GetProfile after register: %v", err)
 	}
 
-	if _, err = mgr.RegisterUser(context.Background(), "alice", certAlice.Raw); !errors.Is(err, ErrNicknameTaken) {
+	if _, err = mgr.RegisterUser(context.Background(), "alice", "anotherpw", certAlice.Raw); !errors.Is(err, ErrNicknameTaken) {
 		t.Fatalf("expected ErrNicknameTaken, got %v", err)
 	}
-	if _, err = mgr.RegisterUser(context.Background(), "Alice-2", certAlice.Raw); !errors.Is(err, ErrCertificateAlreadyAssigned) {
+	if _, err = mgr.RegisterUser(context.Background(), "Alice-2", "longpass", certAlice.Raw); !errors.Is(err, ErrCertificateAlreadyAssigned) {
 		t.Fatalf("expected ErrCertificateAlreadyAssigned, got %v", err)
 	}
 
 	certBob := newTestCertificate(t, "Bob")
-	second, err := mgr.RegisterUser(context.Background(), "Bob", certBob.Raw)
+	second, err := mgr.RegisterUser(context.Background(), "Bob", "passw0rd", certBob.Raw)
 	if err != nil {
 		t.Fatalf("RegisterUser second: %v", err)
 	}
@@ -100,8 +100,35 @@ func TestRegisterUser(t *testing.T) {
 		t.Fatalf("unexpected second user id: %q", second.UserID)
 	}
 
-	if _, err = mgr.RegisterUser(context.Background(), " ", certBob.Raw); !errors.Is(err, ErrInvalidNickname) {
+	if _, err = mgr.RegisterUser(context.Background(), " ", "something", certBob.Raw); !errors.Is(err, ErrInvalidNickname) {
 		t.Fatalf("expected ErrInvalidNickname, got %v", err)
+	}
+}
+
+func TestAuthenticate(t *testing.T) {
+	mgr := newTestManager(t)
+
+	cert := newTestCertificate(t, "Alice")
+	profile, err := mgr.RegisterUser(context.Background(), "Alice", "passw0rd", cert.Raw)
+	if err != nil {
+		t.Fatalf("RegisterUser: %v", err)
+	}
+
+	ident, err := mgr.Authenticate(context.Background(), "Alice", "passw0rd", cert.Raw)
+	if err != nil {
+		t.Fatalf("Authenticate: %v", err)
+	}
+	if ident.UserID != profile.UserID {
+		t.Fatalf("unexpected identity: %+v", ident)
+	}
+
+	if _, err := mgr.Authenticate(context.Background(), "Alice", "wrongpass", cert.Raw); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
+	}
+
+	otherCert := newTestCertificate(t, "Alice device 2")
+	if _, err := mgr.Authenticate(context.Background(), "Alice", "passw0rd", otherCert.Raw); !errors.Is(err, ErrCertificateMismatch) {
+		t.Fatalf("expected ErrCertificateMismatch, got %v", err)
 	}
 }
 

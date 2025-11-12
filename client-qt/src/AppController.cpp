@@ -22,6 +22,7 @@
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QScopedValueRollback>
+#include <QScopeGuard>
 #include <QTimer>
 #include <QUrl>
 #include <QUrlQuery>
@@ -74,6 +75,7 @@ AppController::AppController(QObject *parent)
     loadCredentials();
     loadRegistration();
     if (m_isRegistered) {
+        ensureSessionToken(true);
         initializeAfterRegistration();
     }
 
@@ -145,6 +147,11 @@ bool AppController::isRegistered() const
 QString AppController::nickname() const
 {
     return m_registeredNickname;
+}
+
+bool AppController::isAuthBusy() const
+{
+    return m_authBusy;
 }
 
 void AppController::send(const QString &text)
@@ -265,6 +272,10 @@ QString AppController::authenticate(const QString &nickname,
                                     const QString &password,
                                     const QString &certificatePath)
 {
+    if (m_authBusy) {
+        return tr("Дождитесь завершения предыдущей операции");
+    }
+
     const QString trimmedNickname = nickname.trimmed();
     if (trimmedNickname.isEmpty()) {
         return tr("Введите никнейм");
@@ -279,52 +290,52 @@ QString AppController::authenticate(const QString &nickname,
         return tr("Укажите сертификат устройства");
     }
 
-    Credential *credential = findCredentialByNickname(trimmedNickname);
-    if (!credential) {
-        return tr("Пользователь не найден");
+    QByteArray certDer;
+    QString certError;
+    if (!loadCertificateFromFile(certificateFile, certDer, certError)) {
+        return certError;
     }
-    if (credential->password != trimmedPassword) {
-        return tr("Неверный пароль");
+    const QString certBase64 = QString::fromLatin1(certDer.toBase64()).trimmed();
+
+    QJsonObject payload;
+    payload.insert(QStringLiteral("nickname"), trimmedNickname);
+    payload.insert(QStringLiteral("password"), trimmedPassword);
+    payload.insert(QStringLiteral("certificate"), certBase64);
+
+    QJsonObject response;
+    const QString requestError = sendAuthRequest(QStringLiteral("/api/auth/login"),
+                                                 tr("Вход"),
+                                                 payload,
+                                                 response,
+                                                 true);
+    if (!requestError.isEmpty()) {
+        return requestError;
     }
 
-    QFile certFile(certificateFile);
-    if (!certFile.exists() || !certFile.open(QIODevice::ReadOnly)) {
-        return tr("Не удалось прочитать сертификат");
+    AuthSession session;
+    QString parseError;
+    if (!parseAuthSession(response, session, parseError)) {
+        return parseError;
     }
-    const QByteArray certData = certFile.readAll();
-    certFile.close();
-
-    QList<QSslCertificate> parsed = QSslCertificate::fromData(certData, QSsl::Pem);
-    if (parsed.isEmpty()) {
-        parsed = QSslCertificate::fromData(certData, QSsl::Der);
-    }
-    if (parsed.isEmpty() || parsed.first().isNull()) {
-        return tr("Файл не содержит валидный сертификат");
-    }
-    const QByteArray certDer = parsed.first().toDer();
-    if (certDer.isEmpty()) {
-        return tr("Не удалось преобразовать сертификат");
+    if (session.certificateBase64.isEmpty()) {
+        session.certificateBase64 = certBase64;
     }
 
-    const QString providedCert = QString::fromLatin1(certDer.toBase64()).trimmed();
-    const QString registeredCert = credential->certificateDer.trimmed();
-    if (registeredCert.isEmpty()) {
-        return tr("Для профиля %1 не сохранён сертификат. Повторите регистрацию.")
-            .arg(credential->nickname);
-    }
-    if (QString::compare(providedCert, registeredCert, Qt::CaseSensitive) != 0) {
-        return tr("Сертификат не совпадает с зарегистрированным устройством");
+    const QString storeError = storeCredential(session.userId,
+                                               session.nickname,
+                                               trimmedPassword,
+                                               session.certificateBase64,
+                                               true);
+    if (!storeError.isEmpty()) {
+        return storeError;
     }
 
-    m_registeredUserId = credential->userId;
-    m_registeredNickname = credential->nickname;
-    m_isRegistered = true;
-
-    persistRegistration(m_registeredUserId, m_registeredNickname);
+    applySessionState(session);
 
     appendLog(QStringLiteral("Auth.Login -> пользователь %1 вошёл в систему")
-                  .arg(m_registeredNickname));
+                  .arg(session.nickname));
 
+    emit authInfoChanged();
     emit registrationChanged();
 
     initializeAfterRegistration();
@@ -341,7 +352,8 @@ QString AppController::completeRegistration(const QString &nickname,
         return tr("Введите никнейм");
     }
 
-    if (password.trimmed().isEmpty()) {
+    const QString trimmedPassword = password.trimmed();
+    if (trimmedPassword.isEmpty()) {
         return tr("Введите пароль");
     }
 
@@ -358,104 +370,54 @@ QString AppController::completeRegistration(const QString &nickname,
         return tr("Пользователь с таким ником уже существует");
     }
 
-    QFile certFile(certificateFile);
-    if (!certFile.exists() || !certFile.open(QIODevice::ReadOnly)) {
-        return tr("Не удалось прочитать сертификат");
+    QByteArray certDer;
+    QString certError;
+    if (!loadCertificateFromFile(certificateFile, certDer, certError)) {
+        return certError;
     }
-    const QByteArray certData = certFile.readAll();
-    certFile.close();
-
-    QList<QSslCertificate> parsed = QSslCertificate::fromData(certData, QSsl::Pem);
-    if (parsed.isEmpty()) {
-        parsed = QSslCertificate::fromData(certData, QSsl::Der);
-    }
-    if (parsed.isEmpty() || parsed.first().isNull()) {
-        return tr("Файл не содержит валидный сертификат");
-    }
-    const QByteArray certDer = parsed.first().toDer();
-    if (certDer.isEmpty()) {
-        return tr("Не удалось преобразовать сертификат");
-    }
-
-    if (!m_networkManager) {
-        return tr("Сетевой менеджер не инициализирован");
-    }
-
-    const QUrl url = buildApiUrl(QStringLiteral("/api/auth/register"));
-    if (!url.isValid()) {
-        return tr("Некорректный адрес API (%1)").arg(m_apiBaseUrl);
-    }
-
     const QString certBase64 = QString::fromLatin1(certDer.toBase64()).trimmed();
 
     QJsonObject payload;
     payload.insert(QStringLiteral("nickname"), trimmed);
+    payload.insert(QStringLiteral("password"), trimmedPassword);
     payload.insert(QStringLiteral("certificate"), certBase64);
 
-    QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
-
-    QEventLoop loop;
-    QNetworkReply *reply = m_networkManager->post(request, QJsonDocument(payload).toJson());
-    QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
-
     QScopedValueRollback<bool> inFlight(m_registrationInFlight, true);
-    loop.exec();
 
-    const QNetworkReply::NetworkError networkError = reply->error();
-    const QByteArray responseBytes = reply->readAll();
-    const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-    const QString errorText = reply->errorString();
-    reply->deleteLater();
-
-    if (networkError != QNetworkReply::NoError) {
-        return tr("Ошибка регистрации: %1").arg(errorText);
-    }
-    if (statusCode >= 400) {
-        const QString serverMsg = QString::fromUtf8(responseBytes).trimmed();
-        if (!serverMsg.isEmpty()) {
-            return tr("Регистрация отклонена: %1").arg(serverMsg);
-        }
-        return tr("Регистрация отклонена (код %1)").arg(statusCode);
+    QJsonObject response;
+    const QString requestError = sendAuthRequest(QStringLiteral("/api/auth/register"),
+                                                 tr("Регистрация"),
+                                                 payload,
+                                                 response,
+                                                 true);
+    if (!requestError.isEmpty()) {
+        return requestError;
     }
 
-    QJsonParseError parseError{};
-    const QJsonDocument doc = QJsonDocument::fromJson(responseBytes, &parseError);
-    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
-        return tr("Сервер вернул некорректный ответ");
+    AuthSession session;
+    QString parseError;
+    if (!parseAuthSession(response, session, parseError)) {
+        return parseError;
+    }
+    if (session.certificateBase64.isEmpty()) {
+        session.certificateBase64 = certBase64;
     }
 
-    const QJsonObject obj = doc.object();
-    const QString userId = obj.value(QStringLiteral("user_id")).toString().trimmed();
-    QString serverNickname = obj.value(QStringLiteral("nickname"))
-                                  .toString(trimmed)
-                                  .trimmed();
-    if (userId.isEmpty()) {
-        return tr("Сервер не присвоил идентификатор пользователю");
-    }
-    if (serverNickname.isEmpty()) {
-        serverNickname = trimmed;
+    const QString storeError = storeCredential(session.userId,
+                                               session.nickname,
+                                               trimmedPassword,
+                                               session.certificateBase64,
+                                               true);
+    if (!storeError.isEmpty()) {
+        return storeError;
     }
 
-    Credential credential;
-    credential.userId = userId;
-    credential.nickname = serverNickname;
-    credential.password = password.trimmed();
-    credential.certificateDer = certBase64;
-    m_credentials.append(credential);
-    if (!persistCredentials()) {
-        m_credentials.removeLast();
-        return tr("Не удалось сохранить данные пользователя");
-    }
-
-    m_registeredUserId = userId;
-    m_registeredNickname = serverNickname;
-    m_isRegistered = true;
-    persistRegistration(userId, serverNickname);
+    applySessionState(session);
 
     appendLog(QStringLiteral("Registration -> зарегистрирован профиль %1 (%2)")
-                  .arg(serverNickname, userId));
+                  .arg(session.nickname, session.userId));
 
+    emit authInfoChanged();
     emit registrationChanged();
 
     initializeAfterRegistration();
@@ -493,6 +455,9 @@ void AppController::resetRegistration()
     m_knownServerMsgIds.clear();
     m_lastServerMsgId.clear();
     m_nextMessageId = 1;
+    m_accessToken.clear();
+    m_tokenExpiry = QDateTime();
+    setAuthBusy(false);
 
     appendLog(QStringLiteral("Registration -> профиль сброшен, повторите регистрацию"));
 
@@ -515,6 +480,12 @@ QVariantMap AppController::buildAuthInfo() const
         map.insert(QStringLiteral("certificate"), device.certificate);
     }
     map.insert(QStringLiteral("roles"), m_authenticatedRoles);
+    if (!m_accessToken.trimmed().isEmpty()) {
+        map.insert(QStringLiteral("accessToken"), m_accessToken);
+        if (m_tokenExpiry.isValid()) {
+            map.insert(QStringLiteral("tokenExpiry"), m_tokenExpiry.toString(Qt::ISODate));
+        }
+    }
     return map;
 }
 
@@ -1100,6 +1071,11 @@ void AppController::fetchHistoryFromServer(const QString &sinceServerMsgId)
         return;
     }
 
+    if (!ensureSessionToken(false)) {
+        appendLog(QStringLiteral("Messaging.HTTP -> нет действующего токена, синхронизация отменена"));
+        return;
+    }
+
     QUrlQuery query;
     const QString marker = sinceServerMsgId.trimmed();
     if (!marker.isEmpty()) {
@@ -1113,6 +1089,7 @@ void AppController::fetchHistoryFromServer(const QString &sinceServerMsgId)
     }
 
     QNetworkRequest request(url);
+    applyAuthHeaders(request);
     auto *reply = m_networkManager->get(request);
     const bool initialLoad = marker.isEmpty();
     connect(reply, &QNetworkReply::finished, this, [this, reply, initialLoad]() {
@@ -1156,6 +1133,11 @@ void AppController::fetchUsersFromServer()
         return;
     }
 
+    if (!ensureSessionToken(false)) {
+        appendLog(QStringLiteral("Directory.HTTP -> нет действующего токена, запрос отклонён"));
+        return;
+    }
+
     const QUrl url = buildApiUrl(QStringLiteral("/api/auth/users"));
     if (!url.isValid()) {
         appendLog(QStringLiteral("Directory.HTTP -> некорректный адрес API (%1)").arg(m_apiBaseUrl));
@@ -1165,6 +1147,7 @@ void AppController::fetchUsersFromServer()
     appendLog(QStringLiteral("Directory.HTTP -> запрос каталога пользователей"));
 
     QNetworkRequest request(url);
+    applyAuthHeaders(request);
     auto *reply = m_networkManager->get(request);
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         const QNetworkReply::NetworkError error = reply->error();
@@ -1271,6 +1254,11 @@ void AppController::postMessageToServer(const QString &conversationId, const QSt
         return;
     }
 
+    if (!ensureSessionToken(false)) {
+        appendLog(QStringLiteral("Messaging.Send -> нет действующего токена, сообщение не отправлено"));
+        return;
+    }
+
     QJsonObject payload;
     payload.insert(QStringLiteral("conversation_id"), conversationId);
     payload.insert(QStringLiteral("sender_user_id"), m_authenticatedUser.userId);
@@ -1287,6 +1275,7 @@ void AppController::postMessageToServer(const QString &conversationId, const QSt
 
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    applyAuthHeaders(request);
     auto *reply = m_networkManager->post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
 
     connect(reply, &QNetworkReply::finished, this, [this, reply, conversationId, text]() {
@@ -1785,6 +1774,12 @@ const AppController::Credential *AppController::findCredentialByNickname(const Q
     return nullptr;
 }
 
+AppController::Credential* AppController::findCredentialByUserId(const QString& userId) {
+    auto it = std::find_if(m_credentials.begin(), m_credentials.end(),
+                           [&](const Credential& c){ return c.userId == userId; });
+    return (it != m_credentials.end()) ? &(*it) : nullptr;
+}
+
 const AppController::Credential *AppController::findCredentialByUserId(const QString &userId) const
 {
     const QString trimmed = userId.trimmed();
@@ -1797,4 +1792,346 @@ const AppController::Credential *AppController::findCredentialByUserId(const QSt
         }
     }
     return nullptr;
+}
+
+void AppController::setAuthBusy(bool busy)
+{
+    if (m_authBusy == busy) {
+        return;
+    }
+    m_authBusy = busy;
+    emit authBusyChanged();
+}
+
+bool AppController::loadCertificateFromFile(const QString &path, QByteArray &der, QString &error) const
+{
+    QFile certFile(path);
+    if (!certFile.exists() || !certFile.open(QIODevice::ReadOnly)) {
+        error = tr("Не удалось прочитать сертификат");
+        return false;
+    }
+    const QByteArray certData = certFile.readAll();
+    certFile.close();
+
+    QList<QSslCertificate> parsed = QSslCertificate::fromData(certData, QSsl::Pem);
+    if (parsed.isEmpty()) {
+        parsed = QSslCertificate::fromData(certData, QSsl::Der);
+    }
+    if (parsed.isEmpty() || parsed.first().isNull()) {
+        error = tr("Файл не содержит валидный сертификат");
+        return false;
+    }
+    der = parsed.first().toDer();
+    if (der.isEmpty()) {
+        error = tr("Не удалось преобразовать сертификат");
+        return false;
+    }
+    return true;
+}
+
+QString AppController::sendAuthRequest(const QString &path,
+                                       const QString &operation,
+                                       const QJsonObject &payload,
+                                       QJsonObject &response,
+                                       bool markBusy)
+{
+    if (!m_networkManager) {
+        return tr("%1: сетевой менеджер не инициализирован").arg(operation);
+    }
+
+    const QUrl url = buildApiUrl(path);
+    if (!url.isValid()) {
+        return tr("%1: некорректный адрес API (%2)").arg(operation, m_apiBaseUrl);
+    }
+
+    QScopeGuard busyGuard([this, markBusy]() {
+        if (markBusy) {
+            setAuthBusy(false);
+        }
+    });
+    if (markBusy) {
+        setAuthBusy(true);
+    }
+
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+
+    QEventLoop loop;
+    QNetworkReply *reply = m_networkManager->post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+    QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+    loop.exec();
+
+    const QNetworkReply::NetworkError networkError = reply->error();
+    const QByteArray responseBytes = reply->readAll();
+    const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    const QString errorText = reply->errorString();
+    reply->deleteLater();
+
+    if (networkError != QNetworkReply::NoError) {
+        return tr("%1: ошибка запроса: %2").arg(operation, errorText);
+    }
+    if (statusCode >= 400) {
+        const QString serverMsg = QString::fromUtf8(responseBytes).trimmed();
+        if (!serverMsg.isEmpty()) {
+            return tr("%1: %2").arg(operation, serverMsg);
+        }
+        return tr("%1: сервер вернул ошибку (%2)").arg(operation).arg(statusCode);
+    }
+
+    QJsonParseError parseError{};
+    const QJsonDocument doc = QJsonDocument::fromJson(responseBytes, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        return tr("%1: сервер вернул некорректный ответ").arg(operation);
+    }
+
+    response = doc.object();
+    return {};
+}
+
+bool AppController::parseAuthSession(const QJsonObject &obj, AuthSession &session, QString &error) const
+{
+    const QString userId = obj.value(QStringLiteral("user_id")).toString().trimmed();
+    if (userId.isEmpty()) {
+        error = tr("Сервер не присвоил идентификатор пользователю");
+        return false;
+    }
+    QString nickname = obj.value(QStringLiteral("nickname")).toString(userId).trimmed();
+    if (nickname.isEmpty()) {
+        nickname = userId;
+    }
+    const QString token = obj.value(QStringLiteral("token")).toString().trimmed();
+    if (token.isEmpty()) {
+        error = tr("Сервер не выдал токен авторизации");
+        return false;
+    }
+
+    QStringList roles;
+    const QJsonArray rolesArray = obj.value(QStringLiteral("roles")).toArray();
+    for (const QJsonValue &value : rolesArray) {
+        const QString role = value.toString().trimmed();
+        if (!role.isEmpty()) {
+            roles.append(role);
+        }
+    }
+    if (roles.isEmpty()) {
+        roles << QStringLiteral("user");
+    }
+
+    const QString certificate = obj.value(QStringLiteral("certificate")).toString().trimmed();
+    QDateTime expires = QDateTime::fromString(obj.value(QStringLiteral("expires_at")).toString().trimmed(), Qt::ISODate);
+    if (!expires.isValid()) {
+        expires = QDateTime::currentDateTimeUtc().addSecs(3600);
+    }
+    if (expires.timeSpec() != Qt::UTC) {
+        expires = expires.toUTC();
+    }
+
+    session.userId = userId;
+    session.nickname = nickname;
+    session.roles = roles;
+    session.token = token;
+    session.expiresAtUtc = expires;
+    session.certificateBase64 = certificate;
+    return true;
+}
+
+QString AppController::storeCredential(const QString &userId,
+                                       const QString &nickname,
+                                       const QString &password,
+                                       const QString &certificateBase64,
+                                       bool persistFile)
+{
+    const QString trimmedUserId = userId.trimmed();
+    const QString trimmedNickname = nickname.trimmed();
+    const QString trimmedPassword = password.trimmed();
+    const QString trimmedCert = certificateBase64.trimmed();
+
+    Credential *target = nullptr;
+    if (!trimmedUserId.isEmpty()) {
+        target = findCredentialByUserId(trimmedUserId);
+    }
+    if (!target && !trimmedNickname.isEmpty()) {
+        target = findCredentialByNickname(trimmedNickname);
+    }
+
+    Credential backup;
+    bool created = false;
+    if (!target) {
+        if (!persistFile) {
+            return tr("Сохранённые учётные данные недоступны");
+        }
+        Credential credential;
+        credential.userId = trimmedUserId;
+        credential.nickname = trimmedNickname.isEmpty() ? trimmedUserId : trimmedNickname;
+        credential.password = trimmedPassword;
+        credential.certificateDer = trimmedCert;
+        m_credentials.append(credential);
+        target = &m_credentials.last();
+        created = true;
+    } else {
+        backup = *target;
+        if (!trimmedUserId.isEmpty()) {
+            target->userId = trimmedUserId;
+        }
+        if (!trimmedNickname.isEmpty()) {
+            target->nickname = trimmedNickname;
+        }
+        if (!trimmedPassword.isEmpty()) {
+            target->password = trimmedPassword;
+        }
+        if (!trimmedCert.isEmpty()) {
+            target->certificateDer = trimmedCert;
+        }
+    }
+
+    if (persistFile && !persistCredentials()) {
+        if (created) {
+            m_credentials.removeLast();
+        } else {
+            *target = backup;
+        }
+        return tr("Не удалось сохранить данные пользователя");
+    }
+
+    return {};
+}
+
+bool AppController::applySessionState(const AuthSession &session)
+{
+    const QString previousUserId = m_registeredUserId;
+    const QString previousNickname = m_registeredNickname;
+
+    m_accessToken = session.token.trimmed();
+    m_tokenExpiry = session.expiresAtUtc;
+    if (!m_tokenExpiry.isValid()) {
+        m_tokenExpiry = QDateTime::currentDateTimeUtc().addSecs(3600);
+    }
+    if (m_tokenExpiry.timeSpec() != Qt::UTC) {
+        m_tokenExpiry = m_tokenExpiry.toUTC();
+    }
+
+    m_authenticatedRoles = session.roles;
+    if (m_authenticatedRoles.isEmpty()) {
+        m_authenticatedRoles = QStringList{QStringLiteral("user")};
+    }
+
+    m_registeredUserId = session.userId.trimmed();
+    if (m_registeredUserId.isEmpty()) {
+        m_registeredUserId = QStringLiteral("user-unknown");
+    }
+    m_registeredNickname = session.nickname.trimmed();
+    if (m_registeredNickname.isEmpty()) {
+        m_registeredNickname = m_registeredUserId;
+    }
+    m_isRegistered = true;
+
+    m_authenticatedUser.userId = m_registeredUserId;
+    m_authenticatedUser.nickname = m_registeredNickname;
+
+    persistRegistration(m_registeredUserId, m_registeredNickname);
+
+    return previousUserId != m_registeredUserId || previousNickname != m_registeredNickname;
+}
+
+bool AppController::ensureSessionToken(bool logErrors)
+{
+    if (!m_isRegistered) {
+        return false;
+    }
+    if (hasValidSessionToken()) {
+        return true;
+    }
+
+    const Credential *credential = findCredentialByUserId(m_registeredUserId);
+    if (!credential && !m_registeredNickname.isEmpty()) {
+        credential = findCredentialByNickname(m_registeredNickname);
+    }
+    if (!credential) {
+        if (logErrors) {
+            appendLog(QStringLiteral("Auth.Session -> сохранённых учётных данных не найдено"));
+        }
+        return false;
+    }
+    if (credential->password.trimmed().isEmpty() || credential->certificateDer.trimmed().isEmpty()) {
+        if (logErrors) {
+            appendLog(QStringLiteral("Auth.Session -> учётные данные неполные"));
+        }
+        return false;
+    }
+
+    QJsonObject payload;
+    payload.insert(QStringLiteral("nickname"), credential->nickname);
+    payload.insert(QStringLiteral("password"), credential->password);
+    payload.insert(QStringLiteral("certificate"), credential->certificateDer);
+
+    QJsonObject response;
+    const QString requestError = sendAuthRequest(QStringLiteral("/api/auth/login"),
+                                                 tr("Вход"),
+                                                 payload,
+                                                 response,
+                                                 false);
+    if (!requestError.isEmpty()) {
+        if (logErrors) {
+            appendLog(QStringLiteral("Auth.Session -> %1").arg(requestError));
+        }
+        return false;
+    }
+
+    AuthSession session;
+    QString parseError;
+    if (!parseAuthSession(response, session, parseError)) {
+        if (logErrors) {
+            appendLog(QStringLiteral("Auth.Session -> %1").arg(parseError));
+        }
+        return false;
+    }
+    if (session.certificateBase64.isEmpty()) {
+        session.certificateBase64 = credential->certificateDer;
+    }
+
+    const QString storeError = storeCredential(session.userId,
+                                               session.nickname,
+                                               credential->password,
+                                               session.certificateBase64,
+                                               false);
+    if (!storeError.isEmpty()) {
+        if (logErrors) {
+            appendLog(QStringLiteral("Auth.Session -> %1").arg(storeError));
+        }
+        return false;
+    }
+
+    const bool changed = applySessionState(session);
+    if (logErrors) {
+        appendLog(QStringLiteral("Auth.Session -> получен новый токен, действует до %1")
+                      .arg(m_tokenExpiry.toLocalTime().toString(QStringLiteral("HH:mm"))));
+    }
+
+    emit authInfoChanged();
+    if (changed) {
+        emit registrationChanged();
+    }
+
+    return true;
+}
+
+bool AppController::hasValidSessionToken() const
+{
+    if (m_accessToken.trimmed().isEmpty()) {
+        return false;
+    }
+    if (!m_tokenExpiry.isValid()) {
+        return false;
+    }
+    return QDateTime::currentDateTimeUtc() < m_tokenExpiry.addSecs(-30);
+}
+
+void AppController::applyAuthHeaders(QNetworkRequest &request) const
+{
+    const QString token = m_accessToken.trimmed();
+    if (token.isEmpty()) {
+        return;
+    }
+    request.setRawHeader(QByteArrayLiteral("Authorization"),
+                         QByteArrayLiteral("Bearer ") + token.toUtf8());
 }

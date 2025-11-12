@@ -6,7 +6,7 @@
       "roles": [
         "user"
       ],
-      "password": "starlight",
+      "password": "rog/hhy/1t2JXJoAlA1Eag==:/IgiLDNwgF/mDr4T40d6vxkCyZWUKbHQ44U1a5U+aYk=",
       "cert_der": "TWFyaWEgbGFwdG9w"
     },
     {
@@ -15,7 +15,7 @@
       "roles": [
         "user"
       ],
-      "password": "cipherfox",
+      "password": "jUIpqP5Mlfxk2g9Z1dBuqg==:DS9MrjrCQSqDDRXk7cE89TzUgmG966tALwhXlHu4Ev0=",
       "cert_der": "T2xlZyBkZXNrdG9w"
     },
     {
@@ -33,7 +33,7 @@
         "admin",
         "user"
       ],
-      "password": "swordfish",
+      "password": "q1vtWyPapkU0lTfu39Logw==:iv9/q06cSK4g+KsvkFdQvgBXVRzQ41QiLFm7ZH+3/zQ=",
       "cert_der": "RGV2aWNlIDAxIHByaW1hcnk="
     }
   ]

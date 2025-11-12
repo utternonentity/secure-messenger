@@ -7,22 +7,35 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/utternonentity/secure-messenger/server/internal/identity"
 )
 
 type httpServer struct {
 	identities *identity.Manager
+	tokens     *TokenManager
 }
 
 type registerRequest struct {
 	Nickname    string `json:"nickname"`
+	Password    string `json:"password"`
 	Certificate string `json:"certificate"`
 }
 
-type registerResponse struct {
-	UserID   string `json:"user_id"`
-	Nickname string `json:"nickname"`
+type loginRequest struct {
+	Nickname    string `json:"nickname"`
+	Password    string `json:"password"`
+	Certificate string `json:"certificate"`
+}
+
+type authSessionResponse struct {
+	UserID      string   `json:"user_id"`
+	Nickname    string   `json:"nickname"`
+	Roles       []string `json:"roles"`
+	Token       string   `json:"token"`
+	ExpiresAt   string   `json:"expires_at"`
+	Certificate string   `json:"certificate,omitempty"`
 }
 
 type listUsersResponse struct {
@@ -36,14 +49,18 @@ type userProfileResponse struct {
 	Certificate string   `json:"certificate"`
 }
 
-// NewHTTPHandler exposes a minimal endpoint for registering users by nickname.
-func NewHTTPHandler(manager *identity.Manager) (http.Handler, error) {
+// NewHTTPHandler exposes endpoints for registration, login and directory queries.
+func NewHTTPHandler(manager *identity.Manager, tokens *TokenManager) (http.Handler, error) {
 	if manager == nil {
 		return nil, errors.New("auth: http handler requires an identity manager")
 	}
-	server := &httpServer{identities: manager}
+	if tokens == nil {
+		return nil, errors.New("auth: http handler requires a token manager")
+	}
+	server := &httpServer{identities: manager, tokens: tokens}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/auth/register", server.handleRegister)
+	mux.HandleFunc("/api/auth/login", server.handleLogin)
 	mux.HandleFunc("/api/auth/users", server.handleListUsers)
 	return mux, nil
 }
@@ -61,9 +78,14 @@ func (s *httpServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	nickname := strings.TrimSpace(payload.Nickname)
+	password := strings.TrimSpace(payload.Password)
 	certB64 := strings.TrimSpace(payload.Certificate)
 	if nickname == "" {
 		http.Error(w, "nickname is required", http.StatusBadRequest)
+		return
+	}
+	if password == "" {
+		http.Error(w, "password is required", http.StatusBadRequest)
 		return
 	}
 	if certB64 == "" {
@@ -76,7 +98,7 @@ func (s *httpServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	profile, err := s.identities.RegisterUser(r.Context(), nickname, certDER)
+	profile, err := s.identities.RegisterUser(r.Context(), nickname, password, certDER)
 	if err != nil {
 		switch {
 		case errors.Is(err, context.Canceled):
@@ -85,13 +107,13 @@ func (s *httpServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, http.StatusText(http.StatusGatewayTimeout), http.StatusGatewayTimeout)
 		case errors.Is(err, identity.ErrInvalidNickname):
 			http.Error(w, err.Error(), http.StatusBadRequest)
+		case errors.Is(err, identity.ErrWeakPassword):
+			http.Error(w, err.Error(), http.StatusBadRequest)
 		case errors.Is(err, identity.ErrNicknameTaken):
 			http.Error(w, err.Error(), http.StatusConflict)
 		case errors.Is(err, identity.ErrInvalidCertificate):
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		case errors.Is(err, identity.ErrCertificateAlreadyAssigned):
-			http.Error(w, err.Error(), http.StatusConflict)
-		case errors.Is(err, identity.ErrCertificateMismatch):
 			http.Error(w, err.Error(), http.StatusConflict)
 		default:
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -99,16 +121,66 @@ func (s *httpServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := registerResponse{
-		UserID:   profile.UserID,
-		Nickname: profile.Nickname,
+	ident := profile.ToIdentity()
+	s.respondWithSession(w, http.StatusCreated, ident)
+}
+
+func (s *httpServer) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
 	}
-	writeJSON(w, http.StatusCreated, resp)
+	defer r.Body.Close()
+
+	var payload loginRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "invalid json payload", http.StatusBadRequest)
+		return
+	}
+
+	nickname := strings.TrimSpace(payload.Nickname)
+	password := strings.TrimSpace(payload.Password)
+	certB64 := strings.TrimSpace(payload.Certificate)
+	if nickname == "" || password == "" || certB64 == "" {
+		http.Error(w, "nickname, password and certificate are required", http.StatusBadRequest)
+		return
+	}
+	certDER, err := base64.StdEncoding.DecodeString(certB64)
+	if err != nil {
+		http.Error(w, "certificate must be base64 encoded", http.StatusBadRequest)
+		return
+	}
+
+	ident, err := s.identities.Authenticate(r.Context(), nickname, password, certDER)
+	if err != nil {
+		switch {
+		case errors.Is(err, context.Canceled):
+			http.Error(w, http.StatusText(http.StatusRequestTimeout), http.StatusRequestTimeout)
+		case errors.Is(err, context.DeadlineExceeded):
+			http.Error(w, http.StatusText(http.StatusGatewayTimeout), http.StatusGatewayTimeout)
+		case errors.Is(err, identity.ErrInvalidCredentials):
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+		case errors.Is(err, identity.ErrInvalidCertificate):
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		case errors.Is(err, identity.ErrCertificateMismatch):
+			http.Error(w, err.Error(), http.StatusForbidden)
+		default:
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	s.respondWithSession(w, http.StatusOK, ident)
 }
 
 func (s *httpServer) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if _, status, err := s.authenticateRequest(r); err != nil {
+		http.Error(w, http.StatusText(status), status)
 		return
 	}
 
@@ -130,6 +202,43 @@ func (s *httpServer) handleListUsers(w http.ResponseWriter, r *http.Request) {
 		resp.Users = append(resp.Users, convertIdentityProfile(profile))
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *httpServer) respondWithSession(w http.ResponseWriter, status int, ident identity.Identity) {
+	token, expiresAt, err := s.tokens.IssueToken(ident)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	resp := authSessionResponse{
+		UserID:    ident.UserID,
+		Nickname:  ident.Nickname,
+		Roles:     append([]string(nil), ident.Roles...),
+		Token:     token,
+		ExpiresAt: expiresAt.UTC().Format(time.RFC3339),
+	}
+	if len(ident.CertDER) > 0 {
+		resp.Certificate = base64.StdEncoding.EncodeToString(ident.CertDER)
+	}
+
+	writeJSON(w, status, resp)
+}
+
+func (s *httpServer) authenticateRequest(r *http.Request) (identity.Identity, int, error) {
+	header := r.Header.Get("Authorization")
+	token, err := ParseBearerToken(header)
+	if err != nil {
+		return identity.Identity{}, http.StatusUnauthorized, err
+	}
+	ident, _, err := s.tokens.ValidateToken(token)
+	if err != nil {
+		if errors.Is(err, ErrInvalidToken) {
+			return identity.Identity{}, http.StatusUnauthorized, err
+		}
+		return identity.Identity{}, http.StatusInternalServerError, err
+	}
+	return ident, http.StatusOK, nil
 }
 
 func convertIdentityProfile(profile identity.Profile) userProfileResponse {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QDateTime>
 #include <QHash>
 #include <QJsonDocument>
 #include <QObject>
@@ -11,6 +12,7 @@
 #include <QVariantMap>
 
 class QNetworkAccessManager;
+class QNetworkRequest;
 class QTimer;
 
 class AppController : public QObject {
@@ -23,6 +25,7 @@ class AppController : public QObject {
     Q_PROPERTY(QString currentConversation READ currentConversation WRITE setCurrentConversation NOTIFY currentConversationChanged)
     Q_PROPERTY(bool registered READ isRegistered NOTIFY registrationChanged)
     Q_PROPERTY(QString nickname READ nickname NOTIFY registrationChanged)
+    Q_PROPERTY(bool authBusy READ isAuthBusy NOTIFY authBusyChanged)
 
 public:
     explicit AppController(QObject *parent = nullptr);
@@ -37,6 +40,7 @@ public:
 
     bool isRegistered() const;
     QString nickname() const;
+    bool isAuthBusy() const;
 
     Q_INVOKABLE void send(const QString &text);
     Q_INVOKABLE void startConversationWith(const QString &userId);
@@ -60,8 +64,18 @@ signals:
     void serverLogChanged();
     void currentConversationChanged();
     void registrationChanged();
+    void authBusyChanged();
 
 private:
+    struct AuthSession {
+        QString userId;
+        QString nickname;
+        QStringList roles;
+        QString token;
+        QDateTime expiresAtUtc;
+        QString certificateBase64;
+    };
+
     struct Device {
         QString deviceId;
         QString certificate;
@@ -138,7 +152,27 @@ private:
 
     Credential *findCredentialByNickname(const QString &nickname);
     const Credential *findCredentialByNickname(const QString &nickname) const;
+    
+    Credential* findCredentialByUserId(const QString& userId);
     const Credential *findCredentialByUserId(const QString &userId) const;
+
+    void setAuthBusy(bool busy);
+    bool loadCertificateFromFile(const QString &path, QByteArray &der, QString &error) const;
+    QString sendAuthRequest(const QString &path,
+                            const QString &operation,
+                            const QJsonObject &payload,
+                            QJsonObject &response,
+                            bool markBusy);
+    bool parseAuthSession(const QJsonObject &obj, AuthSession &session, QString &error) const;
+    QString storeCredential(const QString &userId,
+                            const QString &nickname,
+                            const QString &password,
+                            const QString &certificateBase64,
+                            bool persistFile);
+    bool applySessionState(const AuthSession &session);
+    bool ensureSessionToken(bool logErrors);
+    bool hasValidSessionToken() const;
+    void applyAuthHeaders(QNetworkRequest &request) const;
 
     bool m_isRegistered = false;
     QString m_registeredNickname;
@@ -158,5 +192,8 @@ private:
     QTimer *m_pollTimer = nullptr;
     QString m_apiBaseUrl;
     bool m_registrationInFlight = false;
+    bool m_authBusy = false;
+    QString m_accessToken;
+    QDateTime m_tokenExpiry;
     QList<Credential> m_credentials;
 };

@@ -101,8 +101,12 @@ ApplicationWindow {
 
                     property bool registrationMode: false
                     property string formError: ""
+                    property bool busy: App && App.authBusy
 
                     function performPrimaryAction() {
+                        if (authForm.busy) {
+                            return;
+                        }
                         if (!App) {
                             formError = qsTr("Сервис недоступен");
                             return;
@@ -153,6 +157,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             placeholderText: qsTr("Никнейм")
                             selectByMouse: true
+                            enabled: !authForm.busy
                             onAccepted: authPassword.forceActiveFocus()
                             Component.onCompleted: {
                                 if (!App || !App.registered)
@@ -178,6 +183,7 @@ ApplicationWindow {
                             placeholderText: qsTr("Пароль")
                             echoMode: TextInput.Password
                             selectByMouse: true
+                            enabled: !authForm.busy
                             onAccepted: authCertificate.forceActiveFocus()
                         }
 
@@ -194,12 +200,14 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     placeholderText: qsTr("Путь к сертификату устройства (PEM/DER)")
                                     selectByMouse: true
+                                    enabled: !authForm.busy
                                     onAccepted: authForm.performPrimaryAction()
                                 }
 
                                 Button {
                                     text: qsTr("Выбрать")
                                     icon.name: "folder"
+                                    enabled: !authForm.busy
                                     onClicked: certFileDialog.open()
                                 }
                             }
@@ -232,12 +240,20 @@ ApplicationWindow {
                             Layout.preferredWidth: 180
                             text: authForm.registrationMode ? qsTr("Зарегистрироваться") : qsTr("Войти")
                             icon.name: authForm.registrationMode ? "account-circle" : "login"
-                            enabled: authNickname.text.trim().length > 0
+                            enabled: !authForm.busy
+                                     && authNickname.text.trim().length > 0
                                      && authPassword.text.length > 0
                                      && authCertificate.text.trim().length > 0
                                      && App
                                      && (authForm.registrationMode ? App.completeRegistration : App.authenticate)
                             onClicked: authForm.performPrimaryAction()
+                        }
+
+                        BusyIndicator {
+                            running: authForm.busy
+                            visible: running
+                            implicitHeight: primaryAction.implicitHeight
+                            implicitWidth: implicitHeight
                         }
 
                         Item { Layout.fillWidth: true }
@@ -246,7 +262,7 @@ ApplicationWindow {
                             text: qsTr("Обновить справочник")
                             icon.name: "reload"
                             visible: App && App.refreshUsers
-                            enabled: visible
+                            enabled: visible && !authForm.busy
                             onClicked: App.refreshUsers()
                         }
                     }
@@ -266,7 +282,8 @@ ApplicationWindow {
 
                         MouseArea {
                             anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
+                            enabled: !authForm.busy
+                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                             onClicked: {
                                 authForm.registrationMode = !authForm.registrationMode
                                 authForm.formError = ""
@@ -342,12 +359,20 @@ ApplicationWindow {
                     }
                 }
 
-                FileDialog {
+               FileDialog {
                     id: certFileDialog
                     title: qsTr("Выберите сертификат устройства")
                     nameFilters: [qsTr("Сертификаты (*.pem *.cer *.crt *.der)")]
                     onAccepted: {
-                        authCertificate.text = fileUrl.toLocalFile()
+                        // Qt 6: selectedFile (url) или selectedFiles (list<url>)
+                        var u = certFileDialog.selectedFile
+                        if (!u && certFileDialog.selectedFiles && certFileDialog.selectedFiles.length > 0)
+                        u = certFileDialog.selectedFiles[0]
+
+                        if (u) {
+                            // универсально: если это QUrl — toLocalFile(); иначе строка
+                            authCertificate.text = (u.toLocalFile ? u.toLocalFile() : String(u))
+                        }
                     }
                 }
             }
