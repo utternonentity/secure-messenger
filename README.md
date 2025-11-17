@@ -79,10 +79,13 @@ cmake --build build/client-qt
    SM_TLS_CERT=/opt/secure-messenger/certs/server.pem
    SM_TLS_KEY=/opt/secure-messenger/certs/server.key
    SM_TLS_CLIENT_CA=/opt/secure-messenger/certs/client_ca.pem
+   SM_MESSAGE_KEY=KpEyIdHR3J8zvm64LKGhXgeOy4cmh09YkHxAUlPAuro=
    SM_STORE=/opt/secure-messenger/data/messages.db
    SM_IDENTITY_STORE=/opt/secure-messenger/data/identity_store.json
    ENV
    ```
+   `SM_MESSAGE_KEY` — base64-кодированный 32-байтовый ключ для AES-256-GCM, которым шифруются полезные нагрузки HTTP API. В
+   примере указан тестовый ключ, в бою используйте собственный.
 4. (Опционально) создайте `systemd` юнит `/etc/systemd/system/secure-messenger.service`:
    ```ini
    [Unit]
@@ -113,6 +116,7 @@ SM_TLS_CERT=certs/server.pem \
 SM_TLS_KEY=certs/server.key \
 SM_TLS_CLIENT_CA=certs/client_ca.pem \
 SM_LISTEN_ADDR=:8443 \
+SM_MESSAGE_KEY=KpEyIdHR3J8zvm64LKGhXgeOy4cmh09YkHxAUlPAuro= \
 SM_STORE=data/messages.db \
 SM_IDENTITY_STORE=data/identity_store.json \
 ./bin/server --http-listen :8080

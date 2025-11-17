@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ import (
 type httpServer struct {
 	svc    *Service
 	tokens auth.TokenValidator
+	cipher EnvelopeCipher
 }
 
 type httpMessage struct {
@@ -49,14 +51,17 @@ type sendResponse struct {
 }
 
 // NewHTTPHandler exposes a minimal JSON API for history sync and message publishing.
-func NewHTTPHandler(svc *Service, tokens auth.TokenValidator) (http.Handler, error) {
+func NewHTTPHandler(svc *Service, tokens auth.TokenValidator, cipher EnvelopeCipher) (http.Handler, error) {
 	if svc == nil {
 		return nil, errors.New("messaging: http handler requires a service instance")
 	}
 	if tokens == nil {
 		return nil, errors.New("messaging: http handler requires a token validator")
 	}
-	server := &httpServer{svc: svc, tokens: tokens}
+	if cipher == nil {
+		return nil, errors.New("messaging: http handler requires an envelope cipher")
+	}
+	server := &httpServer{svc: svc, tokens: tokens, cipher: cipher}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/messages", server.handleMessages)
 	mux.HandleFunc("/healthz", server.handleHealth)
@@ -101,12 +106,16 @@ func (s *httpServer) handleList(w http.ResponseWriter, r *http.Request, _ identi
 		if convParam != "" && conversationIDOf(rec.Envelope) != convParam {
 			return nil
 		}
+		plaintext, err := s.cipher.Decrypt(rec.Envelope.GetCiphertext())
+		if err != nil {
+			return fmt.Errorf("decrypt message %d: %w", rec.ID, err)
+		}
 		msg := httpMessage{
 			ServerMsgID:     formatServerMsgID(rec.ID),
 			ConversationID:  conversationIDOf(rec.Envelope),
 			SenderUserID:    senderUserIDOf(rec.Envelope),
 			SentUnixSeconds: sentUnixOf(rec.Envelope),
-			Text:            string(rec.Envelope.GetCiphertext()),
+			Text:            string(plaintext),
 		}
 		messages = append(messages, msg)
 		if rec.ID > lastID {
@@ -151,13 +160,18 @@ func (s *httpServer) handleSend(w http.ResponseWriter, r *http.Request, ident id
 		return
 	}
 
+	ciphertext, err := s.cipher.Encrypt([]byte(payload.Text))
+	if err != nil {
+		http.Error(w, "failed to encrypt message", http.StatusInternalServerError)
+		return
+	}
 	env := &smv1.EncryptedEnvelope{
 		Meta: &smv1.EnvelopeMeta{
 			ConversationId: payload.ConversationID,
 			SenderUserId:   payload.SenderUserID,
 			SentUnixSec:    time.Now().Unix(),
 		},
-		Ciphertext: []byte(payload.Text),
+		Ciphertext: ciphertext,
 	}
 
 	resp, err := s.svc.Send(r.Context(), env)

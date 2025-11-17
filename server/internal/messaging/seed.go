@@ -11,9 +11,12 @@ import (
 )
 
 // EnsureSeedData creates a demo message history if the store file does not exist.
-func EnsureSeedData(path string) error {
+func EnsureSeedData(path string, cipher EnvelopeCipher) error {
 	if strings.TrimSpace(path) == "" {
 		return fmt.Errorf("messaging: seed path must not be empty")
+	}
+	if cipher == nil {
+		return fmt.Errorf("messaging: seed cipher must not be nil")
 	}
 	if _, err := os.Stat(path); err == nil {
 		return nil
@@ -21,50 +24,46 @@ func EnsureSeedData(path string) error {
 		return fmt.Errorf("messaging: check seed store: %w", err)
 	}
 
-	sample := jsonStore{Messages: []jsonMessage{
-		{
-			ID:             1,
-			ConversationID: "corp-secure-room",
-			SenderUserID:   "user-0002",
-			SentUnixSec:    1709484000,
-			CiphertextB64:  encodeCiphertext("Привет! Сервер подтвердил наш общий ключ."),
-		},
-		{
-			ID:             2,
-			ConversationID: "corp-secure-room",
-			SenderUserID:   "user-0001",
-			SentUnixSec:    1709484060,
-			CiphertextB64:  encodeCiphertext("Отличные новости, спасибо!"),
-		},
-		{
-			ID:             3,
-			ConversationID: "corp-secure-room",
-			SenderUserID:   "user-0002",
-			SentUnixSec:    1709484300,
-			CiphertextB64:  encodeCiphertext("Напомню, созвон через 15 минут."),
-		},
-		{
-			ID:             4,
-			ConversationID: "corp-secure-room",
-			SenderUserID:   "user-0001",
-			SentUnixSec:    1709484360,
-			CiphertextB64:  encodeCiphertext("Принято, буду на связи."),
-		},
-		{
-			ID:             5,
-			ConversationID: "dm-user-0001-user-0002",
-			SenderUserID:   "user-0001",
-			SentUnixSec:    1709485200,
-			CiphertextB64:  encodeCiphertext("Нужно проверить новые ключи доступа."),
-		},
-		{
-			ID:             6,
-			ConversationID: "dm-user-0001-user-0002",
-			SenderUserID:   "user-0002",
-			SentUnixSec:    1709485260,
-			CiphertextB64:  encodeCiphertext("Готово, всё активировано."),
-		},
-	}}
+	encode := func(id int64, conversation, sender, text string, sentUnix int64) (jsonMessage, error) {
+		ciphertext, err := cipher.Encrypt([]byte(text))
+		if err != nil {
+			return jsonMessage{}, fmt.Errorf("messaging: encrypt seed message %d: %w", id, err)
+		}
+		return jsonMessage{
+			ID:             id,
+			ConversationID: conversation,
+			SenderUserID:   sender,
+			SentUnixSec:    sentUnix,
+			CiphertextB64:  base64.StdEncoding.EncodeToString(ciphertext),
+		}, nil
+	}
+
+	sample := jsonStore{Messages: make([]jsonMessage, 0, 6)}
+	appendMsg := func(msg jsonMessage, err error) error {
+		if err != nil {
+			return err
+		}
+		sample.Messages = append(sample.Messages, msg)
+		return nil
+	}
+	if err := appendMsg(encode(1, "corp-secure-room", "user-0002", "Привет! Сервер подтвердил наш общий ключ.", 1709484000)); err != nil {
+		return err
+	}
+	if err := appendMsg(encode(2, "corp-secure-room", "user-0001", "Отличные новости, спасибо!", 1709484060)); err != nil {
+		return err
+	}
+	if err := appendMsg(encode(3, "corp-secure-room", "user-0002", "Напомню, созвон через 15 минут.", 1709484300)); err != nil {
+		return err
+	}
+	if err := appendMsg(encode(4, "corp-secure-room", "user-0001", "Принято, буду на связи.", 1709484360)); err != nil {
+		return err
+	}
+	if err := appendMsg(encode(5, "dm-user-0001-user-0002", "user-0001", "Нужно проверить новые ключи доступа.", 1709485200)); err != nil {
+		return err
+	}
+	if err := appendMsg(encode(6, "dm-user-0001-user-0002", "user-0002", "Готово, всё активировано.", 1709485260)); err != nil {
+		return err
+	}
 
 	data, err := json.MarshalIndent(&sample, "", "  ")
 	if err != nil {
@@ -80,8 +79,4 @@ func EnsureSeedData(path string) error {
 		return fmt.Errorf("messaging: write seed messages: %w", err)
 	}
 	return nil
-}
-
-func encodeCiphertext(text string) string {
-	return base64.StdEncoding.EncodeToString([]byte(text))
 }

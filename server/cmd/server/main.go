@@ -7,6 +7,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc"
@@ -29,6 +31,7 @@ func main() {
 	storePath := flag.String("store", "data/messages.db", "Path to the message store file")
 	identityPath := flag.String("identity-store", "data/identity_store.json", "Path to the identity store file")
 	httpListenAddr := flag.String("http-listen", ":8080", "Address the HTTP API should listen on")
+	messageKey := flag.String("message-key", envOrDefault("SM_MESSAGE_KEY", messaging.DefaultMessageKeyBase64), "Base64-encoded AES-256 key for encrypting HTTP messages")
 	flag.Parse()
 
 	identityStore, err := storage.ResolveDataPath(*identityPath)
@@ -47,10 +50,15 @@ func main() {
 		log.Printf("legacy message store detected at %s; delete it to avoid confusion", legacy)
 	}
 
+	cipher, err := messaging.NewAESGCMCipherFromBase64(*messageKey)
+	if err != nil {
+		log.Fatalf("init message cipher: %v", err)
+	}
+
 	if err := identity.EnsureSeedData(identityStore.Primary); err != nil {
 		log.Fatalf("seed identity store: %v", err)
 	}
-	if err := messaging.EnsureSeedData(messageStore.Primary); err != nil {
+	if err := messaging.EnsureSeedData(messageStore.Primary, cipher); err != nil {
 		log.Fatalf("seed message store: %v", err)
 	}
 
@@ -110,7 +118,7 @@ func main() {
 	smv1.RegisterDirectoryServer(srv, directoryService)
 	smv1.RegisterMessagingServer(srv, messagingService)
 
-	httpMessagesHandler, err := messaging.NewHTTPHandler(messagingService, tokenManager)
+	httpMessagesHandler, err := messaging.NewHTTPHandler(messagingService, tokenManager, cipher)
 	if err != nil {
 		log.Fatalf("init messaging http handler: %v", err)
 	}
@@ -134,4 +142,11 @@ func main() {
 	if err := srv.Serve(lis); err != nil {
 		log.Fatalf("serve: %v", err)
 	}
+}
+
+func envOrDefault(key, fallback string) string {
+	if val := strings.TrimSpace(os.Getenv(key)); val != "" {
+		return val
+	}
+	return fallback
 }
