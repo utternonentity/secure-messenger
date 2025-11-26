@@ -1702,12 +1702,25 @@ bool AppController::persistCredentials() const
     }
     root.insert(QStringLiteral("users"), users);
 
+    const QByteArray data = QJsonDocument(root).toJson(QJsonDocument::Indented);
+
     QSaveFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        if (file.write(data) == data.size() && file.commit()) {
+            return true;
+        }
+    }
+
+    QFile fallback(path);
+    if (!fallback.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         return false;
     }
-    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
-    return file.commit();
+    if (fallback.write(data) != data.size()) {
+        return false;
+    }
+
+    fallback.flush();
+    return fallback.error() == QFile::NoError;
 }
 
 QString AppController::identityStoreFilePath() const

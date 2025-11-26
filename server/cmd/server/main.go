@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"flag"
@@ -23,120 +25,52 @@ import (
 	"github.com/utternonentity/secure-messenger/server/internal/storage"
 )
 
+type serverConfig struct {
+	certPath       string
+	keyPath        string
+	clientCAPath   string
+	listenAddr     string
+	storePath      string
+	identityPath   string
+	httpListenAddr string
+	messageKey     string
+}
+
+type messageStore interface {
+	Save(context.Context, *smv1.EncryptedEnvelope) (int64, error)
+	ForEachSince(context.Context, int64, func(messaging.StoredEnvelope) error) error
+	Close() error
+}
+
 func main() {
-	certPath := flag.String("cert", "/etc/sm/certs/server.pem", "Path to the server TLS certificate")
-	keyPath := flag.String("key", "/etc/sm/certs/server.key", "Path to the server TLS private key")
-	clientCAPath := flag.String("client-ca", "/etc/sm/certs/client_ca.pem", "Path to the client CA bundle")
-	listenAddr := flag.String("listen", ":8443", "Address the server should listen on")
-	storePath := flag.String("store", "data/messages.db", "Path to the message store file")
-	identityPath := flag.String("identity-store", "data/identity_store.json", "Path to the identity store file")
-	httpListenAddr := flag.String("http-listen", ":8080", "Address the HTTP API should listen on")
-	messageKey := flag.String("message-key", envOrDefault("SM_MESSAGE_KEY", messaging.DefaultMessageKeyBase64), "Base64-encoded AES-256 key for encrypting HTTP messages")
-	flag.Parse()
+	cfg := parseConfig()
 
-	identityStore, err := storage.ResolveDataPath(*identityPath)
-	if err != nil {
-		log.Fatalf("resolve identity store: %v", err)
-	}
-	for _, legacy := range identityStore.Redundant {
-		log.Printf("legacy identity store detected at %s; delete it to avoid confusion", legacy)
-	}
+	identityStore := resolveDataPath(cfg.identityPath, "identity store")
+	messageStore := resolveDataPath(cfg.storePath, "message store")
 
-	messageStore, err := storage.ResolveDataPath(*storePath)
-	if err != nil {
-		log.Fatalf("resolve message store: %v", err)
-	}
-	for _, legacy := range messageStore.Redundant {
-		log.Printf("legacy message store detected at %s; delete it to avoid confusion", legacy)
-	}
+	cipher := mustMessageCipher(cfg.messageKey)
+	prepareSeedData(identityStore.Primary, messageStore.Primary, cipher)
 
-	cipher, err := messaging.NewAESGCMCipherFromBase64(*messageKey)
-	if err != nil {
-		log.Fatalf("init message cipher: %v", err)
-	}
+	identityManager := mustIdentityManager(identityStore.Primary)
+	defer closeIdentityManager(identityManager)
 
-	if err := identity.EnsureSeedData(identityStore.Primary); err != nil {
-		log.Fatalf("seed identity store: %v", err)
-	}
-	if err := messaging.EnsureSeedData(messageStore.Primary, cipher); err != nil {
-		log.Fatalf("seed message store: %v", err)
-	}
+	tlsCfg := mustLoadTLSConfig(cfg, identityManager)
+	lis := listenOrExit(cfg.listenAddr)
+	srv := grpc.NewServer(grpc.Creds(credentials.NewTLS(tlsCfg)))
 
-	identityManager, err := identity.NewManager(identityStore.Primary)
-	if err != nil {
-		log.Fatalf("init identity store: %v", err)
-	}
-	defer func() {
-		if err := identityManager.Close(); err != nil {
-			log.Printf("close identity store: %v", err)
-		}
-	}()
-
-	// Загрузка mTLS (сертификат сервера + доверенные CA для клиентов)
-	cfg, err := mtls.LoadServerTLSConfig(*certPath, *keyPath, *clientCAPath, func(cert *x509.Certificate) error {
-		_, err := identityManager.ValidateCertificate(cert)
-		return err
-	})
-	if err != nil {
-		log.Fatalf("TLS load: %v", err)
-	}
-
-	lis, err := net.Listen("tcp", *listenAddr)
-	if err != nil {
-		log.Fatalf("listen: %v", err)
-	}
-
-	srv := grpc.NewServer(grpc.Creds(credentials.NewTLS(cfg)))
-
-	msgStore, err := messaging.NewStore(messageStore.Primary)
-	if err != nil {
-		log.Fatalf("init message store: %v", err)
-	}
-	defer func() {
-		if err := msgStore.Close(); err != nil {
-			log.Printf("close message store: %v", err)
-		}
-	}()
-
-	messagingService, err := messaging.NewService(msgStore)
-	if err != nil {
-		log.Fatalf("init messaging service: %v", err)
-	}
+	msgStore := mustMessageStore(messageStore.Primary)
+	defer closeMessageStore(msgStore)
+	messagingService := mustMessagingService(msgStore)
 
 	tokenManager := auth.NewTokenManager(30 * time.Minute)
-
-	authService, err := auth.NewService(identityManager)
-	if err != nil {
-		log.Fatalf("init auth service: %v", err)
-	}
-	directoryService, err := directory.NewService(identityManager)
-	if err != nil {
-		log.Fatalf("init directory service: %v", err)
-	}
+	authService := mustAuthService(identityManager)
+	directoryService := mustDirectoryService(identityManager)
 
 	smv1.RegisterAuthServer(srv, authService)
 	smv1.RegisterDirectoryServer(srv, directoryService)
 	smv1.RegisterMessagingServer(srv, messagingService)
 
-	httpMessagesHandler, err := messaging.NewHTTPHandler(messagingService, tokenManager, cipher)
-	if err != nil {
-		log.Fatalf("init messaging http handler: %v", err)
-	}
-	httpAuthHandler, err := auth.NewHTTPHandler(identityManager, tokenManager)
-	if err != nil {
-		log.Fatalf("init auth http handler: %v", err)
-	}
-	httpMux := http.NewServeMux()
-	httpMux.Handle("/api/auth/", httpAuthHandler)
-	httpMux.Handle("/", httpMessagesHandler)
-
-	go func() {
-		httpSrv := &http.Server{Addr: *httpListenAddr, Handler: httpMux}
-		log.Printf("secure-messenger HTTP API listening on %s", httpSrv.Addr)
-		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("http serve: %v", err)
-		}
-	}()
+	startHTTPServer(cfg.httpListenAddr, mustHTTPMux(messagingService, identityManager, tokenManager, cipher))
 
 	log.Printf("secure-messenger server listening on %s", lis.Addr())
 	if err := srv.Serve(lis); err != nil {
@@ -149,4 +83,151 @@ func envOrDefault(key, fallback string) string {
 		return val
 	}
 	return fallback
+}
+
+func parseConfig() serverConfig {
+	certPath := flag.String("cert", "/etc/sm/certs/server.pem", "Path to the server TLS certificate")
+	keyPath := flag.String("key", "/etc/sm/certs/server.key", "Path to the server TLS private key")
+	clientCAPath := flag.String("client-ca", "/etc/sm/certs/client_ca.pem", "Path to the client CA bundle")
+	listenAddr := flag.String("listen", ":8443", "Address the server should listen on")
+	storePath := flag.String("store", "data/messages.db", "Path to the message store file")
+	identityPath := flag.String("identity-store", "data/identity_store.json", "Path to the identity store file")
+	httpListenAddr := flag.String("http-listen", ":8080", "Address the HTTP API should listen on")
+	messageKey := flag.String("message-key", envOrDefault("SM_MESSAGE_KEY", messaging.DefaultMessageKeyBase64), "Base64-encoded AES-256 key for encrypting HTTP messages")
+	flag.Parse()
+
+	return serverConfig{
+		certPath:       *certPath,
+		keyPath:        *keyPath,
+		clientCAPath:   *clientCAPath,
+		listenAddr:     *listenAddr,
+		storePath:      *storePath,
+		identityPath:   *identityPath,
+		httpListenAddr: *httpListenAddr,
+		messageKey:     *messageKey,
+	}
+}
+
+func resolveDataPath(path, label string) storage.Resolution {
+	dataPath, err := storage.ResolveDataPath(path)
+	if err != nil {
+		log.Fatalf("resolve %s: %v", label, err)
+	}
+	for _, legacy := range dataPath.Redundant {
+		log.Printf("legacy %s detected at %s; delete it to avoid confusion", label, legacy)
+	}
+	return dataPath
+}
+
+func mustMessageCipher(messageKey string) *messaging.AESGCMCipher {
+	cipher, err := messaging.NewAESGCMCipherFromBase64(messageKey)
+	if err != nil {
+		log.Fatalf("init message cipher: %v", err)
+	}
+	return cipher
+}
+
+func prepareSeedData(identityPath, messagePath string, cipher *messaging.AESGCMCipher) {
+	if err := identity.EnsureSeedData(identityPath); err != nil {
+		log.Fatalf("seed identity store: %v", err)
+	}
+	if err := messaging.EnsureSeedData(messagePath, cipher); err != nil {
+		log.Fatalf("seed message store: %v", err)
+	}
+}
+
+func mustIdentityManager(identityPath string) *identity.Manager {
+	identityManager, err := identity.NewManager(identityPath)
+	if err != nil {
+		log.Fatalf("init identity store: %v", err)
+	}
+	return identityManager
+}
+
+func closeIdentityManager(manager *identity.Manager) {
+	if err := manager.Close(); err != nil {
+		log.Printf("close identity store: %v", err)
+	}
+}
+
+func mustLoadTLSConfig(cfg serverConfig, identityManager *identity.Manager) *tls.Config {
+	tlsCfg, err := mtls.LoadServerTLSConfig(cfg.certPath, cfg.keyPath, cfg.clientCAPath, func(cert *x509.Certificate) error {
+		_, err := identityManager.ValidateCertificate(cert)
+		return err
+	})
+	if err != nil {
+		log.Fatalf("TLS load: %v", err)
+	}
+	return tlsCfg
+}
+
+func listenOrExit(listenAddr string) net.Listener {
+	lis, err := net.Listen("tcp", listenAddr)
+	if err != nil {
+		log.Fatalf("listen: %v", err)
+	}
+	return lis
+}
+
+func mustMessageStore(messagePath string) messageStore {
+	msgStore, err := messaging.NewStore(messagePath)
+	if err != nil {
+		log.Fatalf("init message store: %v", err)
+	}
+	return msgStore
+}
+
+func closeMessageStore(msgStore messageStore) {
+	if err := msgStore.Close(); err != nil {
+		log.Printf("close message store: %v", err)
+	}
+}
+
+func mustMessagingService(msgStore messageStore) *messaging.Service {
+	messagingService, err := messaging.NewService(msgStore)
+	if err != nil {
+		log.Fatalf("init messaging service: %v", err)
+	}
+	return messagingService
+}
+
+func mustAuthService(identityManager *identity.Manager) *auth.Service {
+	authService, err := auth.NewService(identityManager)
+	if err != nil {
+		log.Fatalf("init auth service: %v", err)
+	}
+	return authService
+}
+
+func mustDirectoryService(identityManager *identity.Manager) *directory.Service {
+	directoryService, err := directory.NewService(identityManager)
+	if err != nil {
+		log.Fatalf("init directory service: %v", err)
+	}
+	return directoryService
+}
+
+func mustHTTPMux(messagingService *messaging.Service, identityManager *identity.Manager, tokenManager *auth.TokenManager, cipher *messaging.AESGCMCipher) *http.ServeMux {
+	httpMessagesHandler, err := messaging.NewHTTPHandler(messagingService, tokenManager, cipher)
+	if err != nil {
+		log.Fatalf("init messaging http handler: %v", err)
+	}
+	httpAuthHandler, err := auth.NewHTTPHandler(identityManager, tokenManager)
+	if err != nil {
+		log.Fatalf("init auth http handler: %v", err)
+	}
+	httpMux := http.NewServeMux()
+	httpMux.Handle("/api/auth/", httpAuthHandler)
+	httpMux.Handle("/", httpMessagesHandler)
+	return httpMux
+}
+
+func startHTTPServer(listenAddr string, mux *http.ServeMux) {
+	go func() {
+		httpSrv := &http.Server{Addr: listenAddr, Handler: mux}
+		log.Printf("secure-messenger HTTP API listening on %s", httpSrv.Addr)
+		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("http serve: %v", err)
+		}
+	}()
 }
