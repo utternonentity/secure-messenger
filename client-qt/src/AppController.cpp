@@ -1095,7 +1095,17 @@ QString AppController::resolveDataDirectory() const
         }
     }
 
-    return fallback.isEmpty() ? QDir::currentPath() : fallback;
+    if (!fallback.isEmpty()) {
+        return fallback;
+    }
+
+    const QString writableCurrent = ensureWritableDir(QDir::currentPath());
+    if (!writableCurrent.isEmpty()) {
+        return writableCurrent;
+    }
+
+    const QString tempDir = ensureWritableDir(QDir::tempPath());
+    return tempDir.isEmpty() ? QDir::currentPath() : tempDir;
 }
 
 QString AppController::nicknameForUserId(const QString &userId) const
