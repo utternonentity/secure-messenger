@@ -41,6 +41,13 @@
       "sender_user_id": "user-0002",
       "sent_unix_sec": 1709485260,
       "ciphertext_b64": "0JPQvtGC0L7QstC+LCDQstGB0ZEg0LDQutGC0LjQstC40YDQvtCy0LDQvdC+Lg=="
+    },
+    {
+      "id": 7,
+      "conversation_id": "dm-user-0004-user-0005",
+      "sender_user_id": "user-0004",
+      "sent_unix_sec": 1764145165,
+      "ciphertext_b64": "VQo3LxZuNjUsZikWxBK+iqe+vGh8LSeBw8qq7vvrnD0/Ivc/JdRAp/sKizM3xh7jRzTTpmadhZMinfZv0rGQK0o9aM/EN3cJVzpI5IqZ+84x"
     }
   ]
 }

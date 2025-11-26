@@ -21,6 +21,7 @@
 #include <QSettings>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QStandardPaths>
 #include <QScopedValueRollback>
 #include <QScopeGuard>
 #include <QTimer>
@@ -948,6 +949,35 @@ bool AppController::loadMessageHistory(const QString &path)
 
 QString AppController::resolveDataDirectory() const
 {
+    const auto ensureWritableDir = [](const QString &path) -> QString {
+        const QString trimmed = path.trimmed();
+        if (trimmed.isEmpty()) {
+            return {};
+        }
+
+        QDir dir(trimmed);
+        if (!dir.exists() && !dir.mkpath(QStringLiteral("."))) {
+            return {};
+        }
+
+        QFileInfo info(dir.absolutePath());
+        if (!info.isWritable()) {
+            return {};
+        }
+
+        return dir.absolutePath();
+    };
+
+    const auto writableFallback = [&ensureWritableDir]() -> QString {
+        const QString appData = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+        if (const QString writable = ensureWritableDir(appData); !writable.isEmpty()) {
+            return writable;
+        }
+        return ensureWritableDir(QDir::currentPath());
+    };
+
+    QString readOnlyMatch;
+
     const auto hasDataArtifacts = [](const QDir &dir) {
         return dir.exists(QStringLiteral("identity_store.json"))
                || dir.exists(QStringLiteral("messages.db"));
@@ -1012,7 +1042,10 @@ QString AppController::resolveDataDirectory() const
 
     const QString envPath = qEnvironmentVariable("SM_DATA_DIR").trimmed();
     if (const QString envMatch = canonicalIfValid(envPath); !envMatch.isEmpty()) {
-        return envMatch;
+        readOnlyMatch = envMatch;
+        if (const QString writable = ensureWritableDir(envMatch); !writable.isEmpty()) {
+            return writable;
+        }
     }
 
     const QStringList explicitCandidates = {QStringLiteral("data"),
@@ -1024,7 +1057,10 @@ QString AppController::resolveDataDirectory() const
         if (probe.cd(candidate)) {
             const QString match = canonicalIfValid(probe.absolutePath());
             if (!match.isEmpty()) {
-                return match;
+                readOnlyMatch = match;
+                if (const QString writable = ensureWritableDir(match); !writable.isEmpty()) {
+                    return writable;
+                }
             }
         }
     }
@@ -1033,15 +1069,33 @@ QString AppController::resolveDataDirectory() const
     for (const QString &root : roots) {
         const QString match = searchParents(root);
         if (!match.isEmpty()) {
-            return match;
+            readOnlyMatch = match;
+            if (const QString writable = ensureWritableDir(match); !writable.isEmpty()) {
+                return writable;
+            }
         }
     }
 
-    if (const QString fallback = canonicalIfValid(QDir::currentPath()); !fallback.isEmpty()) {
-        return fallback;
+    QString fallback = ensureWritableDir(canonicalIfValid(QDir::currentPath()));
+    if (fallback.isEmpty()) {
+        fallback = writableFallback();
     }
 
-    return QDir::currentPath();
+    if (!fallback.isEmpty() && !readOnlyMatch.isEmpty() && fallback != readOnlyMatch) {
+        QDir source(readOnlyMatch);
+        QDir target(fallback);
+
+        const QStringList artifacts = {QStringLiteral("identity_store.json"), QStringLiteral("messages.db")};
+        for (const QString &artifact : artifacts) {
+            const QString srcPath = source.filePath(artifact);
+            const QString dstPath = target.filePath(artifact);
+            if (!QFile::exists(dstPath) && QFile::exists(srcPath)) {
+                QFile::copy(srcPath, dstPath);
+            }
+        }
+    }
+
+    return fallback.isEmpty() ? QDir::currentPath() : fallback;
 }
 
 QString AppController::nicknameForUserId(const QString &userId) const

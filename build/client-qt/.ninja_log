@@ -50,3 +50,17 @@
 44	56	1764144490035358385	/home/yves/pet_projects/secure-messenger/build/client-qt/meta_types/qt6sm_client_metatypes.json	cd5fc01efaf109ea
 56	2615	1764144492598960245	CMakeFiles/sm_client.dir/src/AppController.cpp.o	9df6a7bb367e6a9c
 2615	3111	1764144493096171086	sm_client	fac4c88ecaa79342
+3	36	1764145076208503818	sm_client_autogen/timestamp	2a22de9a139adc30
+3	36	1764145076208503818	sm_client_autogen/mocs_compilation.cpp	2a22de9a139adc30
+3	36	1764145076208503818	/home/yves/pet_projects/secure-messenger/build/client-qt/sm_client_autogen/timestamp	2a22de9a139adc30
+3	36	1764145076208503818	/home/yves/pet_projects/secure-messenger/build/client-qt/sm_client_autogen/mocs_compilation.cpp	2a22de9a139adc30
+37	42	1764145076215301019	meta_types/sm_client_json_file_list.txt	21191df316b9fcf1
+37	42	1764145076215301019	meta_types/sm_client_json_file_list.txt.timestamp	21191df316b9fcf1
+37	42	1764145076215301019	/home/yves/pet_projects/secure-messenger/build/client-qt/meta_types/sm_client_json_file_list.txt	21191df316b9fcf1
+37	42	1764145076215301019	/home/yves/pet_projects/secure-messenger/build/client-qt/meta_types/sm_client_json_file_list.txt.timestamp	21191df316b9fcf1
+42	53	1764145076215301019	meta_types/qt6sm_client_metatypes.json.gen	cd5fc01efaf109ea
+42	53	1764145076215301019	meta_types/qt6sm_client_metatypes.json	cd5fc01efaf109ea
+42	53	1764145076215301019	/home/yves/pet_projects/secure-messenger/build/client-qt/meta_types/qt6sm_client_metatypes.json.gen	cd5fc01efaf109ea
+42	53	1764145076215301019	/home/yves/pet_projects/secure-messenger/build/client-qt/meta_types/qt6sm_client_metatypes.json	cd5fc01efaf109ea
+53	2468	1764145078633934196	CMakeFiles/sm_client.dir/src/AppController.cpp.o	9df6a7bb367e6a9c
+2468	2909	1764145079076374879	sm_client	fac4c88ecaa79342
