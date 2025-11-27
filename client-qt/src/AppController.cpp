@@ -913,9 +913,22 @@ bool AppController::loadMessageHistory(const QString &path)
             continue;
         }
         const QString senderId = obj.value(QStringLiteral("sender_user_id")).toString();
-        const QString ciphertext = obj.value(QStringLiteral("ciphertext_b64")).toString();
-        const QByteArray decoded = QByteArray::fromBase64(ciphertext.toUtf8());
-        const QString text = QString::fromUtf8(decoded.isEmpty() ? ciphertext.toUtf8() : decoded);
+        QString text = obj.value(QStringLiteral("text")).toString().trimmed();
+        if (text.isEmpty()) {
+            const QString ciphertext = obj.value(QStringLiteral("ciphertext_b64")).toString();
+            if (!ciphertext.isEmpty()) {
+                const QByteArray decoded = QByteArray::fromBase64(ciphertext.toUtf8());
+                if (!decoded.isEmpty()) {
+                    const QString decodedText = QString::fromUtf8(decoded);
+                    if (decodedText.toUtf8() == decoded) {
+                        text = decodedText;
+                    }
+                }
+            }
+        }
+        if (text.isEmpty()) {
+            text = tr("Сообщение недоступно");
+        }
         const qint64 sentUnix = static_cast<qint64>(obj.value(QStringLiteral("sent_unix_sec")).toDouble());
 
         Message message;

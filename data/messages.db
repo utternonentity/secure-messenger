@@ -2,80 +2,17 @@
   "messages": [
     {
       "id": 1,
-      "conversation_id": "corp-secure-room",
-      "sender_user_id": "user-0002",
-      "sent_unix_sec": 1709484000,
-      "ciphertext_b64": "0J/RgNC40LLQtdGCISDQodC10YDQstC10YAg0L/QvtC00YLQstC10YDQtNC40Lsg0L3QsNGIINC+0LHRidC40Lkg0LrQu9GO0Ycu"
+      "conversation_id": "dm-user-0001-user-0002",
+      "sender_user_id": "user-0001",
+      "sent_unix_sec": 1764239023,
+      "ciphertext_b64": "Z9GR51X6YWLZZ8GOwJTmTAhfBGQVZFScl1JMIyI2Lr0MrQyKXZ56UWEoLcnusk8Fk6815wMsYs7ndt8+rGt7k+oGVw=="
     },
     {
       "id": 2,
-      "conversation_id": "corp-secure-room",
-      "sender_user_id": "user-0001",
-      "sent_unix_sec": 1709484060,
-      "ciphertext_b64": "0J7RgtC70LjRh9C90YvQtSDQvdC+0LLQvtGB0YLQuCwg0YHQv9Cw0YHQuNCx0L4h"
-    },
-    {
-      "id": 3,
-      "conversation_id": "corp-secure-room",
-      "sender_user_id": "user-0002",
-      "sent_unix_sec": 1709484300,
-      "ciphertext_b64": "0J3QsNC/0L7QvNC90Y4sINGB0L7Qt9Cy0L7QvSDRh9C10YDQtdC3IDE1INC80LjQvdGD0YIu"
-    },
-    {
-      "id": 4,
-      "conversation_id": "corp-secure-room",
-      "sender_user_id": "user-0001",
-      "sent_unix_sec": 1709484360,
-      "ciphertext_b64": "0J/RgNC40L3Rj9GC0L4sINCx0YPQtNGDINC90LAg0YHQstGP0LfQuC4="
-    },
-    {
-      "id": 5,
-      "conversation_id": "dm-user-0001-user-0002",
-      "sender_user_id": "user-0001",
-      "sent_unix_sec": 1709485200,
-      "ciphertext_b64": "0J3Rg9C20L3QviDQv9GA0L7QstC10YDQuNGC0Ywg0L3QvtCy0YvQtSDQutC70Y7Rh9C4INC00L7RgdGC0YPQv9CwLg=="
-    },
-    {
-      "id": 6,
       "conversation_id": "dm-user-0001-user-0002",
       "sender_user_id": "user-0002",
-      "sent_unix_sec": 1709485260,
-      "ciphertext_b64": "0JPQvtGC0L7QstC+LCDQstGB0ZEg0LDQutGC0LjQstC40YDQvtCy0LDQvdC+Lg=="
-    },
-    {
-      "id": 7,
-      "conversation_id": "dm-user-0004-user-0005",
-      "sender_user_id": "user-0004",
-      "sent_unix_sec": 1764145165,
-      "ciphertext_b64": "VQo3LxZuNjUsZikWxBK+iqe+vGh8LSeBw8qq7vvrnD0/Ivc/JdRAp/sKizM3xh7jRzTTpmadhZMinfZv0rGQK0o9aM/EN3cJVzpI5IqZ+84x"
-    },
-    {
-      "id": 8,
-      "conversation_id": "dm-user-0004-user-0005",
-      "sender_user_id": "user-0004",
-      "sent_unix_sec": 1764146469,
-      "ciphertext_b64": "QZ3nhMNPt1+R0ZsBYw79AOG8nkaZr1zTueaNshD5dEl6qEv6r+VdfhqYJuCvigP28S/FiGF+UqE="
-    },
-    {
-      "id": 9,
-      "conversation_id": "dm-user-0004-user-0005",
-      "sender_user_id": "user-0004",
-      "sent_unix_sec": 1764146478,
-      "ciphertext_b64": "xI9heq6+q9XFFoa/xOAAXRutz0y9GNXsfu9y8p+ttfe9IeRemkZWz5X3f1kfIEf0Vw=="
-    },
-    {
-      "id": 10,
-      "conversation_id": "dm-user-0001-user-0002",
-      "sender_user_id": "user-0002",
-      "sent_unix_sec": 1764236529,
-      "ciphertext_b64": "O/4g6bnHHFioRWXXzO6Y7MuQjDqppTpX+t9dv5hl48OJK40ZGh3UzKER4LwouXhUnYZkxY0OC6s="
-    },
-    {
-      "id": 11,
-      "conversation_id": "dm-user-0001-user-0002",
-      "sender_user_id": "user-0001",
-      "sent_unix_sec": 1764236558,
-      "ciphertext_b64": "qMocFiQhJTqDw+sCzl2QWjy8XvaPQz2DXGc7VUQ1QRaIGE9ZTyOANmLsy8fn4AZt4763iveAqOyrkncQ7poe9BF8gJG0cvDuDrsn1bhdbHmEQVkQOmcWhvCywhK8j62EwlBwJKC1ndxQYx3nq28K1OL/8xMCHTXulRiwcKLKKXt+"
+      "sent_unix_sec": 1764239046,
+      "ciphertext_b64": "rSjsmgTK0kXTz/XkAkRojwjw6Gx1uh7a3uXx/XF1bDj6xPA2a9bj49zcEv0GHzIPEhU8ye/F1q7OGKOmbCIkCJ+AvJqGzdnbRmeNhAnJLybEVXz1SzxQC2XW4zDHDw=="
     }
   ],
   "key_fingerprint": "/04s5nMAZR7Lo2bfJsU9QVsSxj2trLpr9Qcq336N+Rg="
