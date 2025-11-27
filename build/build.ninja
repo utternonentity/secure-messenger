@@ -382,7 +382,7 @@ build .qt_plugins/Qt6_QmlPlugins_Imports_sm_client.cmake | ${cmake_ninja_workdir
 #############################################
 # Phony custom command for CMakeFiles/sm_client_autogen_timestamp_deps
 
-build CMakeFiles/sm_client_autogen_timestamp_deps | ${cmake_ninja_workdir}CMakeFiles/sm_client_autogen_timestamp_deps: phony .rcc/qmlcache/sm_client_qmlcache_loader.cpp /usr/lib/qt6/libexec/moc /usr/lib/x86_64-linux-gnu/libQt6WebSockets.so.6.4.2 /usr/lib/x86_64-linux-gnu/libQt6Gui.so.6.4.2 /usr/lib/x86_64-linux-gnu/libQt6Network.so.6.4.2 /usr/lib/x86_64-linux-gnu/libQt6Quick.so.6.4.2 /usr/lib/qt6/libexec/uic
+build CMakeFiles/sm_client_autogen_timestamp_deps | ${cmake_ninja_workdir}CMakeFiles/sm_client_autogen_timestamp_deps: phony .rcc/qmlcache/sm_client_qmlcache_loader.cpp /usr/lib/x86_64-linux-gnu/libQt6Gui.so.6.4.2 /usr/lib/qt6/libexec/moc /usr/lib/x86_64-linux-gnu/libQt6Quick.so.6.4.2 /usr/lib/x86_64-linux-gnu/libQt6Network.so.6.4.2 /usr/lib/x86_64-linux-gnu/libQt6WebSockets.so.6.4.2 /usr/lib/qt6/libexec/uic
 
 
 #############################################

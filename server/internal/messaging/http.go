@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -102,13 +102,15 @@ func (s *httpServer) handleList(w http.ResponseWriter, r *http.Request, _ identi
 
 	var messages []httpMessage
 	var lastID int64
+	var decryptErrors int
 	collect := func(rec StoredEnvelope) error {
 		if convParam != "" && conversationIDOf(rec.Envelope) != convParam {
 			return nil
 		}
 		plaintext, err := s.cipher.Decrypt(rec.Envelope.GetCiphertext())
 		if err != nil {
-			return fmt.Errorf("decrypt message %d: %w", rec.ID, err)
+			decryptErrors++
+			return nil
 		}
 		msg := httpMessage{
 			ServerMsgID:     formatServerMsgID(rec.ID),
@@ -128,6 +130,10 @@ func (s *httpServer) handleList(w http.ResponseWriter, r *http.Request, _ identi
 		statusCode := httpStatusFromError(err)
 		http.Error(w, http.StatusText(statusCode), statusCode)
 		return
+	}
+
+	if decryptErrors > 0 {
+		log.Printf("messaging: skipped %d message(s) due to decryption failure; check SM_MESSAGE_KEY", decryptErrors)
 	}
 
 	resp := listResponse{Messages: messages}

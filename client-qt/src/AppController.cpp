@@ -367,10 +367,6 @@ QString AppController::completeRegistration(const QString &nickname,
         return tr("Укажите путь к клиентскому сертификату");
     }
 
-    if (findCredentialByNickname(trimmed)) {
-        return tr("Пользователь с таким ником уже существует");
-    }
-
     QByteArray certDer;
     QString certError;
     if (!loadCertificateFromFile(certificateFile, certDer, certError)) {
@@ -1160,11 +1156,21 @@ void AppController::fetchHistoryFromServer(const QString &sinceServerMsgId)
         const QNetworkReply::NetworkError error = reply->error();
         const QString errorText = reply->errorString();
         const QByteArray payload = reply->readAll();
+        const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         reply->deleteLater();
 
         if (error != QNetworkReply::NoError) {
             appendLog(QStringLiteral("Messaging.HTTP -> ошибка получения истории: %1")
                           .arg(errorText));
+            return;
+        }
+
+        if (statusCode >= 400) {
+            const QString serverMsg = QString::fromUtf8(payload).trimmed();
+            appendLog(QStringLiteral("Messaging.HTTP -> сервер вернул %1 %2")
+                          .arg(statusCode)
+                          .arg(serverMsg.isEmpty() ? QStringLiteral("")
+                                                   : QStringLiteral("(%1)").arg(serverMsg)));
             return;
         }
 

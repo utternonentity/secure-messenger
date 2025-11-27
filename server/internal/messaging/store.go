@@ -28,10 +28,11 @@ type envelopeRepository interface {
 }
 
 type fileStore struct {
-	mu      sync.RWMutex
-	path    string
-	records []fileRecord
-	nextID  int64
+	mu             sync.RWMutex
+	path           string
+	records        []fileRecord
+	nextID         int64
+	keyFingerprint string
 }
 
 type fileRecord struct {
@@ -40,7 +41,8 @@ type fileRecord struct {
 }
 
 type jsonStore struct {
-	Messages []jsonMessage `json:"messages"`
+	Messages       []jsonMessage `json:"messages"`
+	KeyFingerprint string        `json:"key_fingerprint,omitempty"`
 }
 
 type jsonMessage struct {
@@ -52,13 +54,19 @@ type jsonMessage struct {
 }
 
 // NewStore creates a persistent store backed by a JSON file.
-func NewStore(path string) (*fileStore, error) {
+func NewStore(path string, cipher EnvelopeCipher) (*fileStore, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, fmt.Errorf("store path must not be empty")
 	}
 	store := &fileStore{path: path}
 	if err := store.load(); err != nil {
 		return nil, err
+	}
+	if cipher != nil && store.keyFingerprint != "" && store.keyFingerprint != cipher.Fingerprint() {
+		return nil, fmt.Errorf("message store encrypted with a different key; update SM_MESSAGE_KEY")
+	}
+	if cipher != nil && store.keyFingerprint == "" {
+		store.keyFingerprint = cipher.Fingerprint()
 	}
 	if err := store.persist(); err != nil {
 		return nil, err
@@ -88,6 +96,7 @@ func (s *fileStore) load() error {
 	if err := json.Unmarshal(data, &wrapper); err != nil {
 		return fmt.Errorf("unmarshal message store: %w", err)
 	}
+	s.keyFingerprint = strings.TrimSpace(wrapper.KeyFingerprint)
 	records := make([]fileRecord, 0, len(wrapper.Messages))
 	var maxID int64
 	for _, msg := range wrapper.Messages {
@@ -139,6 +148,9 @@ func (s *fileStore) persistLocked() error {
 			msg.CiphertextB64 = base64.StdEncoding.EncodeToString(env.GetCiphertext())
 		}
 		wrapper.Messages = append(wrapper.Messages, msg)
+	}
+	if s.keyFingerprint != "" {
+		wrapper.KeyFingerprint = s.keyFingerprint
 	}
 
 	data, err := json.MarshalIndent(&wrapper, "", "  ")

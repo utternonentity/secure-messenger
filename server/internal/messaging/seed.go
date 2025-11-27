@@ -39,6 +39,9 @@ func EnsureSeedData(path string, cipher EnvelopeCipher) error {
 	}
 
 	sample := jsonStore{Messages: make([]jsonMessage, 0, 6)}
+	if cipher != nil {
+		sample.KeyFingerprint = cipher.Fingerprint()
+	}
 	appendMsg := func(msg jsonMessage, err error) error {
 		if err != nil {
 			return err

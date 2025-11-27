@@ -63,5 +63,6 @@
       "sent_unix_sec": 1764146478,
       "ciphertext_b64": "xI9heq6+q9XFFoa/xOAAXRutz0y9GNXsfu9y8p+ttfe9IeRemkZWz5X3f1kfIEf0Vw=="
     }
-  ]
+  ],
+  "key_fingerprint": "/04s5nMAZR7Lo2bfJsU9QVsSxj2trLpr9Qcq336N+Rg="
 }

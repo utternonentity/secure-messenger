@@ -58,7 +58,7 @@ func main() {
 	lis := listenOrExit(cfg.listenAddr)
 	srv := grpc.NewServer(grpc.Creds(credentials.NewTLS(tlsCfg)))
 
-	msgStore := mustMessageStore(messageStore.Primary)
+	msgStore := mustMessageStore(messageStore.Primary, cipher)
 	defer closeMessageStore(msgStore)
 	messagingService := mustMessagingService(msgStore)
 
@@ -169,8 +169,8 @@ func listenOrExit(listenAddr string) net.Listener {
 	return lis
 }
 
-func mustMessageStore(messagePath string) messageStore {
-	msgStore, err := messaging.NewStore(messagePath)
+func mustMessageStore(messagePath string, cipher messaging.EnvelopeCipher) messageStore {
+	msgStore, err := messaging.NewStore(messagePath, cipher)
 	if err != nil {
 		log.Fatalf("init message store: %v", err)
 	}

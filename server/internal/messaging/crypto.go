@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -19,11 +20,13 @@ const DefaultMessageKeyBase64 = "KpEyIdHR3J8zvm64LKGhXgeOy4cmh09YkHxAUlPAuro="
 type EnvelopeCipher interface {
 	Encrypt(plaintext []byte) ([]byte, error)
 	Decrypt(ciphertext []byte) ([]byte, error)
+	Fingerprint() string
 }
 
 // AESGCMCipher implements EnvelopeCipher using AES-256-GCM.
 type AESGCMCipher struct {
-	aead cipher.AEAD
+	aead   cipher.AEAD
+	rawKey []byte
 }
 
 // NewAESGCMCipher constructs an AES-256-GCM cipher from the provided raw key.
@@ -39,7 +42,7 @@ func NewAESGCMCipher(key []byte) (*AESGCMCipher, error) {
 	if err != nil {
 		return nil, fmt.Errorf("init AEAD: %w", err)
 	}
-	return &AESGCMCipher{aead: aead}, nil
+	return &AESGCMCipher{aead: aead, rawKey: append([]byte(nil), key...)}, nil
 }
 
 // NewAESGCMCipherFromBase64 constructs an AES-256-GCM cipher from a base64 key string.
@@ -74,6 +77,13 @@ func (c *AESGCMCipher) Decrypt(ciphertext []byte) ([]byte, error) {
 		return nil, fmt.Errorf("decrypt ciphertext: %w", err)
 	}
 	return plaintext, nil
+}
+
+// Fingerprint returns a stable base64-encoded fingerprint of the AES key.
+// It can be persisted alongside message data to detect configuration drift.
+func (c *AESGCMCipher) Fingerprint() string {
+	sum := sha256.Sum256(c.rawKey)
+	return base64.StdEncoding.EncodeToString(sum[:])
 }
 
 func decodeKey(keyB64 string) ([]byte, error) {
