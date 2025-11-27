@@ -56,6 +56,25 @@ QString canonicalDirectConversationId(const QString &first, const QString &secon
 
     return QStringLiteral("dm-%1-%2").arg(ordered.at(0), ordered.at(1));
 }
+
+QString extractMessageText(const QJsonObject &obj)
+{
+    QString text = obj.value(QStringLiteral("text")).toString().trimmed();
+    if (!text.isEmpty()) {
+        return text;
+    }
+
+    const QString ciphertext = obj.value(QStringLiteral("ciphertext_b64")).toString();
+    if (!ciphertext.isEmpty()) {
+        const QByteArray decoded = QByteArray::fromBase64(ciphertext.toUtf8());
+        const QString decodedText = QString::fromUtf8(decoded);
+        if (!decodedText.trimmed().isEmpty()) {
+            return decodedText.trimmed();
+        }
+    }
+
+    return {};
+}
 }
 
 AppController::AppController(QObject *parent)
@@ -450,6 +469,7 @@ void AppController::resetRegistration()
     m_currentConversation.clear();
     m_serverLog.clear();
     m_knownServerMsgIds.clear();
+    m_conversationActivity.clear();
     m_lastServerMsgId.clear();
     m_nextMessageId = 1;
     m_accessToken.clear();
@@ -551,23 +571,25 @@ QVariantList AppController::buildConversationList() const
         }
 
         const QList<Message> &messages = m_conversations.value(conversationId);
+        qint64 lastActivity = m_conversationActivity.value(conversationId, 0);
         if (!messages.isEmpty()) {
             const Message &last = messages.constLast();
             entry.insert(QStringLiteral("lastMessage"), last.text);
-
-            QString displayTime = last.timestamp;
-            if (last.sentUnixSec > 0) {
-                const QDateTime lastMoment = QDateTime::fromSecsSinceEpoch(last.sentUnixSec).toLocalTime();
-                if (lastMoment.date() == QDate::currentDate()) {
-                    displayTime = lastMoment.toString(QStringLiteral("HH:mm"));
-                } else {
-                    displayTime = QLocale().toString(lastMoment.date(), QLocale::ShortFormat);
-                }
-            }
-
-            entry.insert(QStringLiteral("lastTimestamp"), displayTime);
+            const qint64 messageActivity = last.sentUnixSec > 0 ? last.sentUnixSec
+                                                                : parseServerMsgNumeric(last.serverMsgId);
+            lastActivity = std::max(lastActivity, messageActivity);
         } else {
             entry.insert(QStringLiteral("lastMessage"), tr("Нет сообщений"));
+        }
+
+        if (lastActivity > 0) {
+            const QDateTime lastMoment = QDateTime::fromSecsSinceEpoch(lastActivity).toLocalTime();
+            const qint64 ageSeconds = qAbs(lastMoment.secsTo(QDateTime::currentDateTime()));
+            const bool recent = ageSeconds < 24 * 3600;
+            const QString displayTime = recent ? lastMoment.toString(QStringLiteral("HH:mm"))
+                                               : QLocale().toString(lastMoment.date(), QLocale::ShortFormat);
+            entry.insert(QStringLiteral("lastTimestamp"), displayTime);
+        } else {
             entry.insert(QStringLiteral("lastTimestamp"), QString());
         }
         list.append(entry);
@@ -699,6 +721,7 @@ void AppController::loadServerData()
     m_authenticatedUser = User{};
     m_lastServerMsgId.clear();
     m_knownServerMsgIds.clear();
+    m_conversationActivity.clear();
     m_nextMessageId = 1;
 
     const QString dataDir = resolveDataDirectory();
@@ -904,7 +927,6 @@ bool AppController::loadMessageHistory(const QString &path)
             continue;
         }
         const QJsonObject obj = value.toObject();
-        const qint64 id = static_cast<qint64>(obj.value(QStringLiteral("id")).toDouble());
         const QString conversationId = obj.value(QStringLiteral("conversation_id")).toString().trimmed();
         if (conversationId.isEmpty()) {
             continue;
@@ -913,27 +935,17 @@ bool AppController::loadMessageHistory(const QString &path)
             continue;
         }
         const QString senderId = obj.value(QStringLiteral("sender_user_id")).toString();
-        QString text = obj.value(QStringLiteral("text")).toString().trimmed();
-        if (text.isEmpty()) {
-            const QString ciphertext = obj.value(QStringLiteral("ciphertext_b64")).toString();
-            if (!ciphertext.isEmpty()) {
-                const QByteArray decoded = QByteArray::fromBase64(ciphertext.toUtf8());
-                if (!decoded.isEmpty()) {
-                    const QString decodedText = QString::fromUtf8(decoded);
-                    if (decodedText.toUtf8() == decoded) {
-                        text = decodedText;
-                    }
-                }
-            }
-        }
+        QString text = extractMessageText(obj);
         if (text.isEmpty()) {
             text = tr("Сообщение недоступно");
         }
+        const QString serverMsgId = obj.value(QStringLiteral("server_msg_id")).toString().trimmed();
+        const qint64 id = static_cast<qint64>(obj.value(QStringLiteral("id")).toDouble());
         const qint64 sentUnix = static_cast<qint64>(obj.value(QStringLiteral("sent_unix_sec")).toDouble());
 
         Message message;
-        const QString serverMsgId = QStringLiteral("msg-%1").arg(id);
-        message.serverMsgId = serverMsgId;
+        message.serverMsgId = !serverMsgId.isEmpty() ? serverMsgId : QStringLiteral("msg-%1").arg(id);
+        message.senderUserId = senderId;
         message.author = nicknameForUserId(senderId);
         message.text = text;
         message.outgoing = senderId == m_authenticatedUser.userId;
@@ -947,8 +959,9 @@ bool AppController::loadMessageHistory(const QString &path)
 
         QList<Message> &conversation = m_conversations[conversationId];
         conversation.append(message);
-        m_knownServerMsgIds.insert(serverMsgId);
-        updateLastServerMsgId(serverMsgId);
+        m_knownServerMsgIds.insert(message.serverMsgId);
+        updateLastServerMsgId(message.serverMsgId);
+        touchConversationActivity(conversationId, message.sentUnixSec);
     }
 
     rebuildConversationOrder();
@@ -1313,12 +1326,12 @@ int AppController::handleMessagesResponse(const QJsonDocument &doc)
             continue;
         }
         const QString senderUserId = obj.value(QStringLiteral("sender_user_id")).toString();
-        const QString text = obj.value(QStringLiteral("text")).toString();
+        const QString text = extractMessageText(obj);
         const qint64 sentUnixSec = static_cast<qint64>(obj.value(QStringLiteral("sent_unix_sec")).toDouble());
 
         const QString author = nicknameForUserId(senderUserId);
         const bool outgoing = senderUserId == m_authenticatedUser.userId;
-        addServerMessage(conversationId, serverMsgId, author, text, outgoing, sentUnixSec);
+        addServerMessage(conversationId, serverMsgId, senderUserId, author, text, outgoing, sentUnixSec);
         ++added;
     }
 
@@ -1387,13 +1400,17 @@ void AppController::postMessageToServer(const QString &conversationId, const QSt
             convId = conversationId;
         }
         const QString senderUserId = obj.value(QStringLiteral("sender_user_id")).toString(m_authenticatedUser.userId);
-        const QString deliveredText = obj.value(QStringLiteral("text")).toString(text);
+        QString deliveredText = extractMessageText(obj);
+        if (deliveredText.isEmpty()) {
+            deliveredText = text;
+        }
         const qint64 sentUnixSec = static_cast<qint64>(obj.value(QStringLiteral("sent_unix_sec")).toDouble());
 
         if (!serverMsgId.isEmpty() && !m_knownServerMsgIds.contains(serverMsgId)) {
-        const QString author = nicknameForUserId(senderUserId);
+            const QString author = nicknameForUserId(senderUserId);
             addServerMessage(convId,
                              serverMsgId,
+                             senderUserId,
                              author,
                              deliveredText,
                              senderUserId == m_authenticatedUser.userId,
@@ -1441,6 +1458,7 @@ QUrl AppController::buildApiUrl(const QString &path, const QUrlQuery &query) con
 
 void AppController::addServerMessage(const QString &conversationId,
                                       const QString &serverMsgId,
+                                      const QString &senderUserId,
                                       const QString &author,
                                       const QString &text,
                                       bool outgoing,
@@ -1456,6 +1474,7 @@ void AppController::addServerMessage(const QString &conversationId,
 
     Message message;
     message.serverMsgId = serverMsgId;
+    message.senderUserId = senderUserId;
     message.author = author;
     message.text = text;
     message.outgoing = outgoing;
@@ -1471,6 +1490,7 @@ void AppController::addServerMessage(const QString &conversationId,
     messages.append(message);
     m_knownServerMsgIds.insert(serverMsgId);
     updateLastServerMsgId(serverMsgId);
+    touchConversationActivity(trimmedId, message.sentUnixSec);
 
     promoteConversation(trimmedId);
     emit conversationListChanged();
@@ -1478,6 +1498,8 @@ void AppController::addServerMessage(const QString &conversationId,
     if (trimmedId == m_currentConversation) {
         emit conversationChanged();
     }
+
+    persistMessageHistory();
 }
 
 QString AppController::addMessage(const QString &conversationId, const QString &author, const QString &text, bool outgoing)
@@ -1489,6 +1511,7 @@ QString AppController::addMessage(const QString &conversationId, const QString &
 
     Message message;
     message.serverMsgId = QStringLiteral("local-%1").arg(m_nextMessageId++);
+    message.senderUserId = outgoing ? m_authenticatedUser.userId : QString();
     message.author = author;
     message.text = text;
     message.outgoing = outgoing;
@@ -1501,6 +1524,7 @@ QString AppController::addMessage(const QString &conversationId, const QString &
     if (trimmedId == m_currentConversation) {
         emit conversationChanged();
     }
+    persistMessageHistory();
     return message.serverMsgId;
 }
 
@@ -1509,6 +1533,43 @@ void AppController::appendLog(const QString &entry)
     const QString ts = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"));
     m_serverLog.append(QStringLiteral("[%1] %2").arg(ts, entry));
     emit serverLogChanged();
+}
+
+void AppController::persistMessageHistory()
+{
+    const QString dataDir = resolveDataDirectory();
+    if (dataDir.isEmpty()) {
+        return;
+    }
+
+    QDir dir(dataDir);
+    if (!dir.exists() && !dir.mkpath(QStringLiteral("."))) {
+        return;
+    }
+
+    QJsonArray messages;
+    for (auto it = m_conversations.constBegin(); it != m_conversations.constEnd(); ++it) {
+        const QString conversationId = it.key();
+        for (const Message &message : it.value()) {
+            QJsonObject obj;
+            obj.insert(QStringLiteral("server_msg_id"), message.serverMsgId);
+            obj.insert(QStringLiteral("conversation_id"), conversationId);
+            obj.insert(QStringLiteral("sender_user_id"), message.senderUserId);
+            obj.insert(QStringLiteral("sent_unix_sec"), static_cast<double>(message.sentUnixSec));
+            obj.insert(QStringLiteral("text"), message.text);
+            messages.append(obj);
+        }
+    }
+
+    QJsonObject root;
+    root.insert(QStringLiteral("messages"), messages);
+
+    QSaveFile file(dir.filePath(QStringLiteral("messages.db")));
+    if (!file.open(QIODevice::WriteOnly)) {
+        return;
+    }
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    file.commit();
 }
 
 void AppController::ensureDirectoryContainsAuthUser()
@@ -1542,6 +1603,20 @@ AppController::Device *AppController::findDevice(const QString &userId, const QS
     return nullptr;
 }
 
+void AppController::touchConversationActivity(const QString &conversationId, qint64 unixTimestamp)
+{
+    const QString trimmed = conversationId.trimmed();
+    if (trimmed.isEmpty()) {
+        return;
+    }
+
+    const qint64 effectiveTs = unixTimestamp > 0 ? unixTimestamp : QDateTime::currentDateTimeUtc().toSecsSinceEpoch();
+    const auto it = m_conversationActivity.find(trimmed);
+    if (it == m_conversationActivity.end() || effectiveTs > it.value()) {
+        m_conversationActivity.insert(trimmed, effectiveTs);
+    }
+}
+
 void AppController::promoteConversation(const QString &conversationId)
 {
     const QString trimmed = conversationId.trimmed();
@@ -1554,6 +1629,7 @@ void AppController::promoteConversation(const QString &conversationId)
     if (!m_conversations.contains(trimmed)) {
         m_conversations.insert(trimmed, {});
     }
+    touchConversationActivity(trimmed, QDateTime::currentDateTimeUtc().toSecsSinceEpoch());
     rebuildConversationOrder();
 }
 
@@ -1567,14 +1643,16 @@ void AppController::rebuildConversationOrder()
     }
     auto scoreFor = [this](const QString &id) -> qint64 {
         const QList<Message> &messages = m_conversations.value(id);
-        if (messages.isEmpty()) {
-            return 0;
+        qint64 score = m_conversationActivity.value(id, 0);
+        if (!messages.isEmpty()) {
+            const Message &last = messages.constLast();
+            if (last.sentUnixSec > 0) {
+                score = std::max(score, last.sentUnixSec);
+            } else {
+                score = std::max(score, parseServerMsgNumeric(last.serverMsgId));
+            }
         }
-        const Message &last = messages.constLast();
-        if (last.sentUnixSec > 0) {
-            return last.sentUnixSec;
-        }
-        return parseServerMsgNumeric(last.serverMsgId);
+        return score;
     };
 
     std::sort(keys.begin(), keys.end(), [&](const QString &left, const QString &right) {

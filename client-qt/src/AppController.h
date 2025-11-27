@@ -90,6 +90,7 @@ private:
 
     struct Message {
         QString serverMsgId;
+        QString senderUserId;
         QString author;
         QString text;
         QString timestamp;
@@ -119,6 +120,7 @@ private:
     QUrl buildApiUrl(const QString &path, const QUrlQuery &query = {}) const;
     void addServerMessage(const QString &conversationId,
                           const QString &serverMsgId,
+                          const QString &senderUserId,
                           const QString &author,
                           const QString &text,
                           bool outgoing,
@@ -134,6 +136,7 @@ private:
     Device *findDevice(const QString &userId, const QString &deviceId);
     void promoteConversation(const QString &conversationId);
     void rebuildConversationOrder();
+    void touchConversationActivity(const QString &conversationId, qint64 unixTimestamp);
     QString conversationDisplayName(const QString &conversationId) const;
     QString conversationSubtitle(const QString &conversationId) const;
     bool isConversationVisible(const QString &conversationId) const;
@@ -174,6 +177,7 @@ private:
     bool ensureSessionToken(bool logErrors);
     bool hasValidSessionToken() const;
     void applyAuthHeaders(QNetworkRequest &request) const;
+    void persistMessageHistory();
 
     bool m_isRegistered = false;
     QString m_registeredNickname;
@@ -189,6 +193,7 @@ private:
     qint64 m_nextMessageId = 1;
     QString m_lastServerMsgId;
     QSet<QString> m_knownServerMsgIds;
+    QHash<QString, qint64> m_conversationActivity;
     QNetworkAccessManager *m_networkManager = nullptr;
     QTimer *m_pollTimer = nullptr;
     QString m_apiBaseUrl;

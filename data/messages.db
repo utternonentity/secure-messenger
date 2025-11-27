@@ -1,19 +1,25 @@
 {
-  "messages": [
-    {
-      "id": 1,
-      "conversation_id": "dm-user-0001-user-0002",
-      "sender_user_id": "user-0001",
-      "sent_unix_sec": 1764239023,
-      "ciphertext_b64": "Z9GR51X6YWLZZ8GOwJTmTAhfBGQVZFScl1JMIyI2Lr0MrQyKXZ56UWEoLcnusk8Fk6815wMsYs7ndt8+rGt7k+oGVw=="
-    },
-    {
-      "id": 2,
-      "conversation_id": "dm-user-0001-user-0002",
-      "sender_user_id": "user-0002",
-      "sent_unix_sec": 1764239046,
-      "ciphertext_b64": "rSjsmgTK0kXTz/XkAkRojwjw6Gx1uh7a3uXx/XF1bDj6xPA2a9bj49zcEv0GHzIPEhU8ye/F1q7OGKOmbCIkCJ+AvJqGzdnbRmeNhAnJLybEVXz1SzxQC2XW4zDHDw=="
-    }
-  ],
-  "key_fingerprint": "/04s5nMAZR7Lo2bfJsU9QVsSxj2trLpr9Qcq336N+Rg="
+    "messages": [
+        {
+            "conversation_id": "dm-user-0001-user-0002",
+            "sender_user_id": "user-0002",
+            "sent_unix_sec": 1764241691,
+            "server_msg_id": "msg-1",
+            "text": "проверка работы сервера мессенджера"
+        },
+        {
+            "conversation_id": "dm-user-0001-user-0002",
+            "sender_user_id": "user-0002",
+            "sent_unix_sec": 1764241703,
+            "server_msg_id": "msg-2",
+            "text": "проверка шифрования расшифрования и отправки сообщений"
+        },
+        {
+            "conversation_id": "dm-user-0001-user-0002",
+            "sender_user_id": "user-0001",
+            "sent_unix_sec": 1764241870,
+            "server_msg_id": "msg-3",
+            "text": "сообщения были доставлены, отображаются с другого устройства, с другого аккаунт и были расшифрованы"
+        }
+    ]
 }
