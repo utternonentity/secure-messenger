@@ -280,8 +280,6 @@ func (m *Manager) Authenticate(ctx context.Context, nickname, password string, c
 			if len(user.CertDER) == 0 || !bytes.Equal(user.CertDER, cert.Raw) {
 				return Identity{}, ErrCertificateMismatch
 			}
-		} else if len(user.CertDER) > 0 {
-			return Identity{}, ErrCertificateMismatch
 		}
 		return user.toIdentity(), nil
 	}

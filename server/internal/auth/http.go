@@ -141,14 +141,19 @@ func (s *httpServer) handleLogin(w http.ResponseWriter, r *http.Request) {
 	nickname := strings.TrimSpace(payload.Nickname)
 	password := strings.TrimSpace(payload.Password)
 	certB64 := strings.TrimSpace(payload.Certificate)
-	if nickname == "" || password == "" || certB64 == "" {
-		http.Error(w, "nickname, password and certificate are required", http.StatusBadRequest)
+	if nickname == "" || password == "" {
+		http.Error(w, "nickname and password are required", http.StatusBadRequest)
 		return
 	}
-	certDER, err := base64.StdEncoding.DecodeString(certB64)
-	if err != nil {
-		http.Error(w, "certificate must be base64 encoded", http.StatusBadRequest)
-		return
+
+	var certDER []byte
+	var err error
+	if certB64 != "" {
+		certDER, err = base64.StdEncoding.DecodeString(certB64)
+		if err != nil {
+			http.Error(w, "certificate must be base64 encoded", http.StatusBadRequest)
+			return
+		}
 	}
 
 	ident, err := s.identities.Authenticate(r.Context(), nickname, password, certDER)

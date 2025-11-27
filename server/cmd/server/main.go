@@ -86,9 +86,9 @@ func envOrDefault(key, fallback string) string {
 }
 
 func parseConfig() serverConfig {
-	certPath := flag.String("cert", "/etc/sm/certs/server.pem", "Path to the server TLS certificate")
-	keyPath := flag.String("key", "/etc/sm/certs/server.key", "Path to the server TLS private key")
-	clientCAPath := flag.String("client-ca", "/etc/sm/certs/client_ca.pem", "Path to the client CA bundle")
+	certPath := flag.String("cert", "/home/yves/secure-messenger/certs/server.pem", "Path to the server TLS certificate")
+	keyPath := flag.String("key", "/home/yves/secure-messenger/certs/server.key", "Path to the server TLS private key")
+	clientCAPath := flag.String("client-ca", "/home/yves/secure-messenger/certs/client_ca.pem", "Path to the client CA bundle")
 	listenAddr := flag.String("listen", ":8443", "Address the server should listen on")
 	storePath := flag.String("store", "data/messages.db", "Path to the message store file")
 	identityPath := flag.String("identity-store", "data/identity_store.json", "Path to the identity store file")

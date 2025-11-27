@@ -103,14 +103,19 @@ func (s *httpServer) handleList(w http.ResponseWriter, r *http.Request, _ identi
 	var messages []httpMessage
 	var lastID int64
 	var decryptErrors int
+	var plaintextFallbacks int
 	collect := func(rec StoredEnvelope) error {
 		if convParam != "" && conversationIDOf(rec.Envelope) != convParam {
 			return nil
 		}
-		plaintext, err := s.cipher.Decrypt(rec.Envelope.GetCiphertext())
+		ciphertext := rec.Envelope.GetCiphertext()
+		plaintext, err := s.cipher.Decrypt(ciphertext)
 		if err != nil {
 			decryptErrors++
-			return nil
+			// Если сообщение не шифровалось (старые записи или клиент без шифрования),
+			// отдаём полезную нагрузку как есть, чтобы история была доступна.
+			plaintext = ciphertext
+			plaintextFallbacks++
 		}
 		msg := httpMessage{
 			ServerMsgID:     formatServerMsgID(rec.ID),
@@ -133,7 +138,11 @@ func (s *httpServer) handleList(w http.ResponseWriter, r *http.Request, _ identi
 	}
 
 	if decryptErrors > 0 {
-		log.Printf("messaging: skipped %d message(s) due to decryption failure; check SM_MESSAGE_KEY", decryptErrors)
+		log.Printf("messaging: %d message(s) failed to decrypt; check SM_MESSAGE_KEY", decryptErrors)
+	}
+
+	if plaintextFallbacks > 0 {
+		log.Printf("messaging: returned %d plaintext message(s) due to missing encryption", plaintextFallbacks)
 	}
 
 	resp := listResponse{Messages: messages}
