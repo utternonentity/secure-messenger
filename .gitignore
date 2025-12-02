@@ -32,6 +32,16 @@ coverage.out
 *.db
 *.json
 !data/user_credentials.json
+
+# Credentials / TLS artifacts
+*.pem
+*.key
+*.csr
+*.p12
+*.srl
+*.crt
+.env
+.env.*
 # Misc
 *.cache
 *.pdb

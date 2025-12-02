@@ -21,6 +21,17 @@
                 "user"
             ],
             "user_id": "user-0002"
+        },
+        {
+            "cert_der": "MIIFKTCCAxGgAwIBAgIUYqAFhZ1Kyf+idvqX/DLKA+nQyrYwDQYJKoZIhvcNAQELBQAwJDEiMCAGA1UEAwwZU2VjdXJlTWVzc2VuZ2VyIFRlc3QgUm9vdDAeFw0yNTEwMjEwOTQwNDlaFw0yNjEwMjEwOTQwNDlaMCQxIjAgBgNVBAMMGVNlY3VyZU1lc3NlbmdlciBUZXN0IFJvb3QwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQC5mCxWZoBU34yUZ11XhSmpKOQEklMXTS5wYmQVKFEteydhR5qAey5/0KN5C3TvCWeNOyUKrgpXNv09GIMv5OqAH+JpOrV7CPiL/+skADcIb8D8uKRyuhNHcFFC1L+19zuOokR+0lSpauemmECDt5H8Wc9NitK+w6pVD5iFEGv37i/MOvdhUTEGt6TwZ8KMqAxZYkCKpizt7hocaRHZACRMQJW04xAdL7ZaMs3bYmsgfNjHF4GEENXXmwz4oD2u4d1Ph8LnFJ6f6p/J3xjxTsgASinZdGnYGybegL4+v5ae1+ov6InrdRk7yGK7jxHx5rjD2d4toLdBkd9QGI3EjJKTMHdF/MG/4M4s3DoVybvzSkVMd/uKHP7U4PXBXdzBbkxMCHQ85CxvKQn/8RdZ7B8CYfYadVlJu97343sDLYfErzClFP0tFzPMuOK+LiuwHv/7LrItrU+RlQXMgOM7M/A/PDjOSgpsvJ4jQij2XIDXF/7XzIYi7ly7RWhSYfsoFGz4BaZp7Qz7NHikqs5MT5TGp51eqSlGW88gNKw5Tvo0CaUPMNYnjGVG0ndK43Kx1qUwB2QFJ6i3aGkzdwQ3nw9gYJ3AUjB3D8E/MbtKEczRBUDpVv6bTH6FlJbxQOy2NB/bvaqKURoOfbv8cd8UkCm9wHSU9ij3NrzDVM7wdK9HhwIDAQABo1MwUTAdBgNVHQ4EFgQU/P4xRpC2c7usYJWSMgyIjprKSYMwHwYDVR0jBBgwFoAU/P4xRpC2c7usYJWSMgyIjprKSYMwDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAgEAtrQnTuKb+t33ZsDLrSawLn7NmhWfaKM75A66IOtkEUfbLdoyHyatONkXgYxQzVczq0LtC/JCRaWAjnNG3VBh5F4aYDiOIcWTuycOrqY3NL62h6wCvJk+/yAV2rq5+j9odhERlV0idbuoNWBuqEDbvQdu0vcZipmOWTqCjVfbolckRHDlXgR6eTqN52faOc+DXz/t3H4Y3xXsa4yKW64tfJkt1hFdl9iBlEDlfSm9lmyl0Qjvq/wY+VoXiASozdU07awcc9vuWXu1mUaF3FFdopPt+o2tg+EFqEjrpQJbOakuAI8jE7C/QJLcZQ2Zbo81B14/gxWv1UPUiSEfzKnrbxm8aVYvFA6NEX8tV3A/y5BJM+Hhfk/7RoMMoc2VFGUQY/PPTnizEe30KSxTA/Jc9Apgq9P6ksm/9L5/KRAk2bcSeL4ZuvqBdS6nsehGtmW/eYWBJxbLRX9n4uLr5p1Wy2g6DMoIx0JwqLSOKTYS4jj38YQoPVbnu7/LOMxFcveW8QuneV7pVLtOq84SlcZhV2KJOzRM3dARqTqwfC5Qi+9nbibwpZOKJBxFrshWR0DBazeNG2z5f7c5ML+b4InGtGRGHtUnNKsuB/XOrcX/5Rzsb0hfqqn4cBaGdzNe2widBlBJclT+AQ1zeAUbCPRsBFgwmksFU5FisPd0RNwkhZM=",
+            "devices": {
+            },
+            "nickname": "admin",
+            "password": "admin1234",
+            "roles": [
+                "user"
+            ],
+            "user_id": "user-0003"
         }
     ]
 }

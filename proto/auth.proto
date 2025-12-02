@@ -1,6 +1,6 @@
 syntax = "proto3";
 package sm.v1;
-option go_package = "github.com/utternonentity/secure-messenger/server/internal/gen/sm/v1;smv1";
+option go_package = "github.com/roofn/secure-messenger/server/internal/gen/sm/v1;smv1";
 import "common.proto";
 
 

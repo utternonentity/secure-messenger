@@ -1,25 +1,32 @@
 {
     "messages": [
         {
-            "conversation_id": "dm-user-0001-user-0002",
-            "sender_user_id": "user-0002",
-            "sent_unix_sec": 1764241691,
-            "server_msg_id": "msg-1",
-            "text": "проверка работы сервера мессенджера"
+            "conversation_id": "dm-user-0001-user-0003",
+            "sender_user_id": "user-0003",
+            "sent_unix_sec": 1764242390,
+            "server_msg_id": "msg-4",
+            "text": "V�V\u0006.7�@�\u001a����e�v�,R�����\u0007 ���}�I\u0018�1��\u0003Z�3�ѯ"
         },
         {
-            "conversation_id": "dm-user-0001-user-0002",
-            "sender_user_id": "user-0002",
-            "sent_unix_sec": 1764241703,
-            "server_msg_id": "msg-2",
-            "text": "проверка шифрования расшифрования и отправки сообщений"
+            "conversation_id": "dm-user-0001-user-0003",
+            "sender_user_id": "user-0003",
+            "sent_unix_sec": 1764242784,
+            "server_msg_id": "msg-5",
+            "text": "привет как дела что за хррень происходит"
         },
         {
-            "conversation_id": "dm-user-0001-user-0002",
+            "conversation_id": "dm-user-0001-user-0003",
             "sender_user_id": "user-0001",
-            "sent_unix_sec": 1764241870,
-            "server_msg_id": "msg-3",
-            "text": "сообщения были доставлены, отображаются с другого устройства, с другого аккаунт и были расшифрованы"
+            "sent_unix_sec": 1764242815,
+            "server_msg_id": "msg-6",
+            "text": "о вроде все нормас интересно что на серваке ща происходит"
+        },
+        {
+            "conversation_id": "dm-user-0001-user-0003",
+            "sender_user_id": "user-0003",
+            "sent_unix_sec": 1764242848,
+            "server_msg_id": "msg-7",
+            "text": "тупа кайф какой та"
         }
     ]
 }

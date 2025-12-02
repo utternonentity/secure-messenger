@@ -30,6 +30,7 @@ type envelopeRepository interface {
 type fileStore struct {
 	mu             sync.RWMutex
 	path           string
+	cipher         EnvelopeCipher
 	records        []fileRecord
 	nextID         int64
 	keyFingerprint string
@@ -51,6 +52,8 @@ type jsonMessage struct {
 	SenderUserID   string `json:"sender_user_id"`
 	SentUnixSec    int64  `json:"sent_unix_sec"`
 	CiphertextB64  string `json:"ciphertext_b64"`
+	Plaintext      string `json:"text,omitempty"`
+	ServerMsgID    string `json:"server_msg_id,omitempty"`
 }
 
 // NewStore creates a persistent store backed by a JSON file.
@@ -58,18 +61,25 @@ func NewStore(path string, cipher EnvelopeCipher) (*fileStore, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, fmt.Errorf("store path must not be empty")
 	}
-	store := &fileStore{path: path}
-	if err := store.load(); err != nil {
+	if cipher == nil {
+		return nil, fmt.Errorf("store cipher must not be nil")
+	}
+	store := &fileStore{path: path, cipher: cipher}
+	dirty, err := store.load()
+	if err != nil {
 		return nil, err
 	}
-	if cipher != nil && store.keyFingerprint != "" && store.keyFingerprint != cipher.Fingerprint() {
+	if store.keyFingerprint != "" && store.keyFingerprint != cipher.Fingerprint() {
 		return nil, fmt.Errorf("message store encrypted with a different key; update SM_MESSAGE_KEY")
 	}
-	if cipher != nil && store.keyFingerprint == "" {
+	if store.keyFingerprint == "" {
 		store.keyFingerprint = cipher.Fingerprint()
+		dirty = true
 	}
-	if err := store.persist(); err != nil {
-		return nil, err
+	if dirty {
+		if err := store.persist(); err != nil {
+			return nil, err
+		}
 	}
 	return store, nil
 }
@@ -77,24 +87,25 @@ func NewStore(path string, cipher EnvelopeCipher) (*fileStore, error) {
 // Close is kept for compatibility with previous implementations.
 func (s *fileStore) Close() error { return nil }
 
-func (s *fileStore) load() error {
+func (s *fileStore) load() (bool, error) {
+	dirty := false
 	data, err := os.ReadFile(s.path)
 	if errors.Is(err, os.ErrNotExist) {
 		s.records = nil
 		s.nextID = 0
-		return nil
+		return false, nil
 	}
 	if err != nil {
-		return fmt.Errorf("read message store: %w", err)
+		return false, fmt.Errorf("read message store: %w", err)
 	}
 	if len(data) == 0 {
 		s.records = nil
 		s.nextID = 0
-		return nil
+		return false, nil
 	}
 	var wrapper jsonStore
 	if err := json.Unmarshal(data, &wrapper); err != nil {
-		return fmt.Errorf("unmarshal message store: %w", err)
+		return false, fmt.Errorf("unmarshal message store: %w", err)
 	}
 	s.keyFingerprint = strings.TrimSpace(wrapper.KeyFingerprint)
 	records := make([]fileRecord, 0, len(wrapper.Messages))
@@ -110,21 +121,47 @@ func (s *fileStore) load() error {
 		if msg.SentUnixSec != 0 {
 			env.Meta.SentUnixSec = msg.SentUnixSec
 		}
+
+		id := msg.ID
+		if id == 0 && msg.ServerMsgID != "" {
+			parsed, err := parseServerMsgID(msg.ServerMsgID)
+			if err == nil {
+				id = parsed
+			}
+		}
+		if id == 0 {
+			id = maxID + 1
+			dirty = true
+		}
+
 		if msg.CiphertextB64 != "" {
 			payload, err := base64.StdEncoding.DecodeString(msg.CiphertextB64)
 			if err != nil {
-				return fmt.Errorf("decode message %d ciphertext: %w", msg.ID, err)
+				return false, fmt.Errorf("decode message %d ciphertext: %w", msg.ID, err)
 			}
 			env.Ciphertext = payload
 		}
-		records = append(records, fileRecord{id: msg.ID, envelope: env})
-		if msg.ID > maxID {
-			maxID = msg.ID
+
+		if len(env.Ciphertext) == 0 && strings.TrimSpace(msg.Plaintext) != "" {
+			if s.cipher == nil {
+				return false, fmt.Errorf("store cipher is required to encrypt plaintext messages")
+			}
+			ciphertext, err := s.cipher.Encrypt([]byte(msg.Plaintext))
+			if err != nil {
+				return false, fmt.Errorf("encrypt legacy message %d: %w", id, err)
+			}
+			env.Ciphertext = ciphertext
+			dirty = true
+		}
+
+		records = append(records, fileRecord{id: id, envelope: env})
+		if id > maxID {
+			maxID = id
 		}
 	}
 	s.records = records
 	s.nextID = maxID
-	return nil
+	return dirty, nil
 }
 
 func (s *fileStore) persist() error {

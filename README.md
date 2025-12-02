@@ -59,6 +59,22 @@ cmake -S client-qt -B build/client-qt -GNinja
 cmake --build build/client-qt
 ```
 
+#### Установщик клиента
+Для сборки и установки клиентского бинарника воспользуйтесь готовыми скриптами. По умолчанию артефакты кладутся в `dist/client`:
+
+```bash
+bash build-scripts/install_client.sh
+```
+
+На Windows используйте PowerShell-версию:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File build-scripts/install_client.ps1
+```
+
+Скрипты принимают параметры для смены каталога сборки (`-b`/`-BuildDir`) и префикса установки (`-p`/`-Prefix`). Если установлен Ninja,
+он выбирается автоматически; при необходимости передайте иной генератор (`-g`/`-Generator`).
+
 Исполняемый файл располагается в `build/client-qt/sm_client` (путь может отличаться на Windows/macOS).
 
 ## 5. Настройка серверного узла
