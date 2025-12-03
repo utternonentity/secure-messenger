@@ -32,8 +32,9 @@ type httpMessage struct {
 }
 
 type listResponse struct {
-	Messages        []httpMessage `json:"messages"`
-	LastServerMsgID string        `json:"last_server_msg_id,omitempty"`
+	Messages        []httpMessage                `json:"messages"`
+	LastServerMsgID string                       `json:"last_server_msg_id,omitempty"`
+	ReadMarkers     map[string]map[string]string `json:"read_markers,omitempty"`
 }
 
 type sendRequest struct {
@@ -50,6 +51,11 @@ type sendResponse struct {
 	Text           string `json:"text"`
 }
 
+type readMarkerRequest struct {
+	ConversationID  string `json:"conversation_id"`
+	LastServerMsgID string `json:"last_server_msg_id"`
+}
+
 // NewHTTPHandler exposes a minimal JSON API for history sync and message publishing.
 func NewHTTPHandler(svc *Service, tokens auth.TokenValidator, cipher EnvelopeCipher) (http.Handler, error) {
 	if svc == nil {
@@ -64,6 +70,7 @@ func NewHTTPHandler(svc *Service, tokens auth.TokenValidator, cipher EnvelopeCip
 	server := &httpServer{svc: svc, tokens: tokens, cipher: cipher}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/messages", server.handleMessages)
+	mux.HandleFunc("/api/read_markers", server.handleReadMarkers)
 	mux.HandleFunc("/healthz", server.handleHealth)
 	return mux, nil
 }
@@ -90,6 +97,40 @@ func (s *httpServer) handleMessages(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *httpServer) handleReadMarkers(w http.ResponseWriter, r *http.Request) {
+	ident, status, err := s.authenticate(r)
+	if err != nil {
+		http.Error(w, http.StatusText(status), status)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var payload readMarkerRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "invalid json payload", http.StatusBadRequest)
+		return
+	}
+
+	if strings.TrimSpace(payload.ConversationID) == "" || strings.TrimSpace(payload.LastServerMsgID) == "" {
+		http.Error(w, "conversation_id and last_server_msg_id are required", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.svc.UpdateReadMarker(r.Context(), payload.ConversationID, ident.UserID, payload.LastServerMsgID); err != nil {
+		statusCode := httpStatusFromError(err)
+		http.Error(w, http.StatusText(statusCode), statusCode)
+		return
+	}
+
+	writeJSON(w, map[string]string{
+		"conversation_id":    payload.ConversationID,
+		"last_server_msg_id": payload.LastServerMsgID,
+	})
+}
+
 func (s *httpServer) handleList(w http.ResponseWriter, r *http.Request, _ identity.Identity) {
 	sinceParam := strings.TrimSpace(r.URL.Query().Get("since_id"))
 	convParam := strings.TrimSpace(r.URL.Query().Get("conversation_id"))
@@ -101,6 +142,7 @@ func (s *httpServer) handleList(w http.ResponseWriter, r *http.Request, _ identi
 	}
 
 	var messages []httpMessage
+	convSeen := make(map[string]struct{})
 	var lastID int64
 	var decryptErrors int
 	var plaintextFallbacks int
@@ -125,6 +167,7 @@ func (s *httpServer) handleList(w http.ResponseWriter, r *http.Request, _ identi
 			Text:            string(plaintext),
 		}
 		messages = append(messages, msg)
+		convSeen[msg.ConversationID] = struct{}{}
 		if rec.ID > lastID {
 			lastID = rec.ID
 		}
@@ -148,6 +191,40 @@ func (s *httpServer) handleList(w http.ResponseWriter, r *http.Request, _ identi
 	resp := listResponse{Messages: messages}
 	if lastID > 0 {
 		resp.LastServerMsgID = formatServerMsgID(lastID)
+	}
+	if markers, err := s.svc.ReadMarkers(r.Context()); err == nil && len(markers) > 0 {
+		filtered := make(map[string]map[string]string)
+		for convID := range convSeen {
+			if convMarkers, ok := markers[convID]; ok {
+				copyMarkers := make(map[string]string)
+				for userID, marker := range convMarkers {
+					if marker <= 0 {
+						continue
+					}
+					copyMarkers[userID] = formatServerMsgID(marker)
+				}
+				if len(copyMarkers) > 0 {
+					filtered[convID] = copyMarkers
+				}
+			}
+		}
+		if convParam != "" {
+			if convMarkers, ok := markers[convParam]; ok {
+				copyMarkers := make(map[string]string)
+				for userID, marker := range convMarkers {
+					if marker <= 0 {
+						continue
+					}
+					copyMarkers[userID] = formatServerMsgID(marker)
+				}
+				if len(copyMarkers) > 0 {
+					filtered[convParam] = copyMarkers
+				}
+			}
+		}
+		if len(filtered) > 0 {
+			resp.ReadMarkers = filtered
+		}
 	}
 	writeJSON(w, resp)
 }

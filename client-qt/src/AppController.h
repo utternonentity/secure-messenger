@@ -95,6 +95,8 @@ private:
         QString text;
         QString timestamp;
         bool outgoing = false;
+        bool delivered = false;
+        bool readByPeer = false;
         qint64 sentUnixSec = 0;
     };
 
@@ -118,7 +120,9 @@ private:
     void updateLastServerMsgId(const QString &serverMsgId);
     void loadReadMarkers();
     void persistReadMarkers() const;
+    void syncReadMarkerWithServer(const QString &conversationId, qint64 lastServerMsgId);
     qint64 parseServerMsgNumeric(const QString &serverMsgId) const;
+    qint64 latestServerMessageId(const QString &conversationId) const;
     QUrl buildApiUrl(const QString &path, const QUrlQuery &query = {}) const;
     void addServerMessage(const QString &conversationId,
                           const QString &serverMsgId,
@@ -127,6 +131,9 @@ private:
                           const QString &text,
                           bool outgoing,
                           qint64 sentUnixSec);
+    void applyReadMarkersFromServer(const QJsonObject &root);
+    void updatePeerReadState(const QString &conversationId);
+    QString conversationPeerId(const QString &conversationId) const;
 
     QString resolveDataDirectory() const;
     QString nicknameForUserId(const QString &userId) const;
@@ -200,6 +207,7 @@ private:
     QSet<QString> m_knownServerMsgIds;
     QHash<QString, qint64> m_conversationActivity;
     QHash<QString, qint64> m_conversationReadMarkers;
+    QHash<QString, qint64> m_peerReadMarkers;
     QNetworkAccessManager *m_networkManager = nullptr;
     QTimer *m_pollTimer = nullptr;
     QString m_apiBaseUrl;

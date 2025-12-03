@@ -709,6 +709,33 @@ ApplicationWindow {
                                                         wrapMode: Text.WordWrap
                                                         width: Math.min(chatView.width * 0.72, 480)
                                                     }
+
+                                                    Item {
+                                                        width: bubbleContent.width
+                                                        height: message && message.outgoing ? 16 : 0
+                                                        visible: message && message.outgoing
+
+                                                        Row {
+                                                            anchors.right: parent.right
+                                                            anchors.verticalCenter: parent.verticalCenter
+                                                            spacing: 4
+
+                                                            Label {
+                                                                text: "\u2713"
+                                                                color: (message && message.delivered) ? "#93c5fd" : "#6b7280"
+                                                                font.pixelSize: 12
+                                                                font.bold: true
+                                                            }
+
+                                                            Label {
+                                                                visible: message && message.read
+                                                                text: "\u2713"
+                                                                color: Material.accent
+                                                                font.pixelSize: 12
+                                                                font.bold: true
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }

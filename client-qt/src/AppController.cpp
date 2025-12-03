@@ -563,6 +563,8 @@ QVariantList AppController::buildConversation() const
         entry.insert(QStringLiteral("text"), message.text);
         entry.insert(QStringLiteral("timestamp"), message.timestamp);
         entry.insert(QStringLiteral("outgoing"), message.outgoing);
+        entry.insert(QStringLiteral("delivered"), message.delivered);
+        entry.insert(QStringLiteral("read"), message.readByPeer);
         list.append(entry);
     }
     return list;
@@ -741,6 +743,7 @@ void AppController::loadServerData()
     m_knownServerMsgIds.clear();
     m_conversationActivity.clear();
     m_conversationReadMarkers.clear();
+    m_peerReadMarkers.clear();
     m_nextMessageId = 1;
 
     const QString dataDir = resolveDataDirectory();
@@ -928,6 +931,8 @@ bool AppController::loadMessageHistory(const QString &path)
         message.author = nicknameForUserId(senderId);
         message.text = text;
         message.outgoing = senderId == m_authenticatedUser.userId;
+        message.delivered = message.serverMsgId.startsWith(QStringLiteral("msg-"));
+        message.readByPeer = false;
         if (sentUnix > 0) {
             message.sentUnixSec = sentUnix;
             message.timestamp = QDateTime::fromSecsSinceEpoch(sentUnix).toString(QStringLiteral("HH:mm:ss"));
@@ -1319,6 +1324,8 @@ int AppController::handleMessagesResponse(const QJsonDocument &doc)
         updateLastServerMsgId(lastId);
     }
 
+    applyReadMarkersFromServer(root);
+
     return added;
 }
 
@@ -1400,6 +1407,46 @@ void AppController::postMessageToServer(const QString &conversationId, const QSt
     });
 }
 
+void AppController::applyReadMarkersFromServer(const QJsonObject &root)
+{
+    const QJsonObject markersObj = root.value(QStringLiteral("read_markers")).toObject();
+    if (markersObj.isEmpty()) {
+        return;
+    }
+
+    bool persisted = false;
+    for (auto it = markersObj.constBegin(); it != markersObj.constEnd(); ++it) {
+        const QString conversationId = it.key().trimmed();
+        if (conversationId.isEmpty()) {
+            continue;
+        }
+        const QJsonObject perConversation = it.value().toObject();
+        for (auto markIt = perConversation.constBegin(); markIt != perConversation.constEnd(); ++markIt) {
+            const QString userId = markIt.key().trimmed();
+            const qint64 marker = parseServerMsgNumeric(markIt.value().toString());
+            if (userId.isEmpty() || marker <= 0) {
+                continue;
+            }
+            if (QString::compare(userId, m_authenticatedUser.userId, Qt::CaseInsensitive) == 0) {
+                if (marker > m_conversationReadMarkers.value(conversationId, 0)) {
+                    m_conversationReadMarkers.insert(conversationId, marker);
+                    persisted = true;
+                }
+            } else {
+                const qint64 currentPeer = m_peerReadMarkers.value(conversationId, 0);
+                if (marker > currentPeer) {
+                    m_peerReadMarkers.insert(conversationId, marker);
+                }
+            }
+        }
+        updatePeerReadState(conversationId);
+    }
+
+    if (persisted) {
+        persistReadMarkers();
+    }
+}
+
 void AppController::updateLastServerMsgId(const QString &serverMsgId)
 {
     const qint64 numeric = parseServerMsgNumeric(serverMsgId);
@@ -1420,6 +1467,19 @@ qint64 AppController::parseServerMsgNumeric(const QString &serverMsgId) const
         return 0;
     }
     return value;
+}
+
+qint64 AppController::latestServerMessageId(const QString &conversationId) const
+{
+    qint64 latest = 0;
+    const QList<Message> messages = m_conversations.value(conversationId);
+    for (const Message &message : messages) {
+        const qint64 numeric = parseServerMsgNumeric(message.serverMsgId);
+        if (numeric > latest) {
+            latest = numeric;
+        }
+    }
+    return latest;
 }
 
 QUrl AppController::buildApiUrl(const QString &path, const QUrlQuery &query) const
@@ -1457,6 +1517,7 @@ void AppController::addServerMessage(const QString &conversationId,
     message.author = author;
     message.text = text;
     message.outgoing = outgoing;
+    message.delivered = true;
     if (sentUnixSec > 0) {
         message.sentUnixSec = sentUnixSec;
         message.timestamp = QDateTime::fromSecsSinceEpoch(sentUnixSec).toString(QStringLiteral("HH:mm:ss"));
@@ -1470,6 +1531,8 @@ void AppController::addServerMessage(const QString &conversationId,
     m_knownServerMsgIds.insert(serverMsgId);
     updateLastServerMsgId(serverMsgId);
     touchConversationActivity(trimmedId, message.sentUnixSec);
+
+    updatePeerReadState(trimmedId);
 
     promoteConversation(trimmedId, message.sentUnixSec);
     if (trimmedId == m_currentConversation) {
@@ -1497,6 +1560,8 @@ QString AppController::addMessage(const QString &conversationId, const QString &
     message.author = author;
     message.text = text;
     message.outgoing = outgoing;
+    message.delivered = false;
+    message.readByPeer = false;
     message.timestamp = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"));
     message.sentUnixSec = QDateTime::currentDateTimeUtc().toSecsSinceEpoch();
     QList<Message> &messages = m_conversations[trimmedId];
@@ -1660,6 +1725,31 @@ void AppController::persistReadMarkers() const
     settings.sync();
 }
 
+void AppController::syncReadMarkerWithServer(const QString &conversationId, qint64 lastServerMsgId)
+{
+    if (!m_isRegistered || !m_networkManager || lastServerMsgId <= 0) {
+        return;
+    }
+    if (!ensureSessionToken(false)) {
+        return;
+    }
+
+    QJsonObject payload;
+    payload.insert(QStringLiteral("conversation_id"), conversationId);
+    payload.insert(QStringLiteral("last_server_msg_id"), QStringLiteral("msg-%1").arg(lastServerMsgId));
+
+    const QUrl url = buildApiUrl(QStringLiteral("/api/read_markers"));
+    if (!url.isValid()) {
+        return;
+    }
+
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    applyAuthHeaders(request);
+    auto *reply = m_networkManager->post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+    connect(reply, &QNetworkReply::finished, this, [reply]() { reply->deleteLater(); });
+}
+
 void AppController::markConversationRead(const QString &conversationId)
 {
     const QString trimmed = conversationId.trimmed();
@@ -1667,9 +1757,13 @@ void AppController::markConversationRead(const QString &conversationId)
         return;
     }
 
-    const qint64 activity = lastActivityForConversation(trimmed);
-    if (activity > 0) {
-        m_conversationReadMarkers.insert(trimmed, activity);
+    const qint64 lastServerMsgId = latestServerMessageId(trimmed);
+    if (lastServerMsgId > 0) {
+        const qint64 previous = m_conversationReadMarkers.value(trimmed, 0);
+        m_conversationReadMarkers.insert(trimmed, lastServerMsgId);
+        if (lastServerMsgId > previous) {
+            syncReadMarkerWithServer(trimmed, lastServerMsgId);
+        }
     } else {
         m_conversationReadMarkers.remove(trimmed);
     }
@@ -1683,14 +1777,47 @@ int AppController::unreadCountFor(const QString &conversationId) const
 
     const QList<Message> messages = m_conversations.value(conversationId);
     for (const Message &message : messages) {
-        const qint64 timestamp = message.sentUnixSec > 0 ? message.sentUnixSec
-                                                         : parseServerMsgNumeric(message.serverMsgId);
+        const qint64 serverId = parseServerMsgNumeric(message.serverMsgId);
+        const qint64 timestamp = serverId > 0 ? serverId : message.sentUnixSec;
         if (timestamp > readMarker && !message.outgoing) {
             ++unread;
         }
     }
 
     return unread;
+}
+
+void AppController::updatePeerReadState(const QString &conversationId)
+{
+    const qint64 peerMarker = m_peerReadMarkers.value(conversationId, 0);
+    if (peerMarker <= 0) {
+        return;
+    }
+
+    QList<Message> &messages = m_conversations[conversationId];
+    bool changed = false;
+    for (Message &message : messages) {
+        if (!message.outgoing) {
+            continue;
+        }
+        const qint64 msgId = parseServerMsgNumeric(message.serverMsgId);
+        const bool read = msgId > 0 && msgId <= peerMarker;
+        if (read != message.readByPeer) {
+            message.readByPeer = read;
+            changed = true;
+        }
+        if (msgId > 0 && !message.delivered) {
+            message.delivered = true;
+            changed = true;
+        }
+    }
+
+    if (changed) {
+        emit conversationListChanged();
+        if (conversationId == m_currentConversation) {
+            emit conversationChanged();
+        }
+    }
 }
 
 void AppController::promoteConversation(const QString &conversationId, qint64 activityHint)
@@ -1794,6 +1921,26 @@ QString AppController::conversationSubtitle(const QString &conversationId) const
     }
 
     return QString();
+}
+
+QString AppController::conversationPeerId(const QString &conversationId) const
+{
+    const QString trimmed = conversationId.trimmed();
+    if (!trimmed.startsWith(QStringLiteral("dm-"))) {
+        return {};
+    }
+    const QStringList parts = trimmed.mid(3).split(QStringLiteral("-"), Qt::SkipEmptyParts);
+    if (parts.size() != 2) {
+        return {};
+    }
+    const QString selfId = m_authenticatedUser.userId;
+    if (QString::compare(parts.first(), selfId, Qt::CaseInsensitive) == 0) {
+        return parts.last();
+    }
+    if (QString::compare(parts.last(), selfId, Qt::CaseInsensitive) == 0) {
+        return parts.first();
+    }
+    return {};
 }
 
 bool AppController::isConversationVisible(const QString &conversationId) const

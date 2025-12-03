@@ -27,6 +27,11 @@ type envelopeRepository interface {
 	ForEachSince(ctx context.Context, afterID int64, fn func(StoredEnvelope) error) error
 }
 
+type readMarkerRepository interface {
+	UpdateReadMarker(ctx context.Context, conversationID, userID string, lastMsgID int64) error
+	ReadMarkers(ctx context.Context) (map[string]map[string]int64, error)
+}
+
 type fileStore struct {
 	mu             sync.RWMutex
 	path           string
@@ -34,6 +39,7 @@ type fileStore struct {
 	records        []fileRecord
 	nextID         int64
 	keyFingerprint string
+	readMarkers    map[string]map[string]int64
 }
 
 type fileRecord struct {
@@ -42,8 +48,9 @@ type fileRecord struct {
 }
 
 type jsonStore struct {
-	Messages       []jsonMessage `json:"messages"`
-	KeyFingerprint string        `json:"key_fingerprint,omitempty"`
+	Messages       []jsonMessage               `json:"messages"`
+	KeyFingerprint string                      `json:"key_fingerprint,omitempty"`
+	ReadMarkers    map[string]map[string]int64 `json:"read_markers,omitempty"`
 }
 
 type jsonMessage struct {
@@ -93,6 +100,7 @@ func (s *fileStore) load() (bool, error) {
 	if errors.Is(err, os.ErrNotExist) {
 		s.records = nil
 		s.nextID = 0
+		s.readMarkers = make(map[string]map[string]int64)
 		return false, nil
 	}
 	if err != nil {
@@ -101,6 +109,7 @@ func (s *fileStore) load() (bool, error) {
 	if len(data) == 0 {
 		s.records = nil
 		s.nextID = 0
+		s.readMarkers = make(map[string]map[string]int64)
 		return false, nil
 	}
 	var wrapper jsonStore
@@ -108,6 +117,7 @@ func (s *fileStore) load() (bool, error) {
 		return false, fmt.Errorf("unmarshal message store: %w", err)
 	}
 	s.keyFingerprint = strings.TrimSpace(wrapper.KeyFingerprint)
+	s.readMarkers = make(map[string]map[string]int64)
 	records := make([]fileRecord, 0, len(wrapper.Messages))
 	var maxID int64
 	for _, msg := range wrapper.Messages {
@@ -161,6 +171,22 @@ func (s *fileStore) load() (bool, error) {
 	}
 	s.records = records
 	s.nextID = maxID
+	for convID, markers := range wrapper.ReadMarkers {
+		convID = strings.TrimSpace(convID)
+		if convID == "" {
+			continue
+		}
+		for userID, marker := range markers {
+			userID = strings.TrimSpace(userID)
+			if userID == "" || marker <= 0 {
+				continue
+			}
+			if _, ok := s.readMarkers[convID]; !ok {
+				s.readMarkers[convID] = make(map[string]int64)
+			}
+			s.readMarkers[convID][userID] = marker
+		}
+	}
 	return dirty, nil
 }
 
@@ -188,6 +214,26 @@ func (s *fileStore) persistLocked() error {
 	}
 	if s.keyFingerprint != "" {
 		wrapper.KeyFingerprint = s.keyFingerprint
+	}
+	if len(s.readMarkers) > 0 {
+		wrapper.ReadMarkers = make(map[string]map[string]int64, len(s.readMarkers))
+		for convID, markers := range s.readMarkers {
+			cleanID := strings.TrimSpace(convID)
+			if cleanID == "" {
+				continue
+			}
+			convMarkers := make(map[string]int64, len(markers))
+			for userID, marker := range markers {
+				cleanUser := strings.TrimSpace(userID)
+				if cleanUser == "" || marker <= 0 {
+					continue
+				}
+				convMarkers[cleanUser] = marker
+			}
+			if len(convMarkers) > 0 {
+				wrapper.ReadMarkers[cleanID] = convMarkers
+			}
+		}
 	}
 
 	data, err := json.MarshalIndent(&wrapper, "", "  ")
@@ -256,4 +302,54 @@ func (s *fileStore) ForEachSince(ctx context.Context, afterID int64, fn func(Sto
 		}
 	}
 	return nil
+}
+
+func (s *fileStore) UpdateReadMarker(ctx context.Context, conversationID, userID string, lastMsgID int64) error {
+	conversationID = strings.TrimSpace(conversationID)
+	userID = strings.TrimSpace(userID)
+	if conversationID == "" || userID == "" {
+		return fmt.Errorf("conversation_id and user_id are required")
+	}
+	if lastMsgID < 0 {
+		return fmt.Errorf("last message id must be non-negative")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.readMarkers == nil {
+		s.readMarkers = make(map[string]map[string]int64)
+	}
+	convMarkers, ok := s.readMarkers[conversationID]
+	if !ok {
+		convMarkers = make(map[string]int64)
+		s.readMarkers[conversationID] = convMarkers
+	}
+	if lastMsgID <= convMarkers[userID] {
+		return nil
+	}
+	convMarkers[userID] = lastMsgID
+	return s.persistLocked()
+}
+
+func (s *fileStore) ReadMarkers(ctx context.Context) (map[string]map[string]int64, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make(map[string]map[string]int64, len(s.readMarkers))
+	for convID, markers := range s.readMarkers {
+		convCopy := make(map[string]int64, len(markers))
+		for userID, marker := range markers {
+			convCopy[userID] = marker
+		}
+		result[convID] = convCopy
+	}
+	return result, nil
 }

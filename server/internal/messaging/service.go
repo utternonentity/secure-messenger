@@ -21,6 +21,7 @@ const serverMsgIDPrefix = "msg-"
 type Service struct {
 	smv1.UnimplementedMessagingServer
 	store  envelopeRepository
+	reads  readMarkerRepository
 	subsMu sync.RWMutex
 	subs   map[*subscription]struct{}
 }
@@ -30,7 +31,11 @@ func NewService(store envelopeRepository) (*Service, error) {
 	if store == nil {
 		return nil, fmt.Errorf("store must not be nil")
 	}
-	return &Service{store: store, subs: make(map[*subscription]struct{})}, nil
+	svc := &Service{store: store, subs: make(map[*subscription]struct{})}
+	if repo, ok := store.(readMarkerRepository); ok {
+		svc.reads = repo
+	}
+	return svc, nil
 }
 
 // Send persists the encrypted envelope and returns the assigned server-side identifier.
@@ -54,6 +59,50 @@ func (s *Service) Send(ctx context.Context, env *smv1.EncryptedEnvelope) (*smv1.
 	s.broadcast(StoredEnvelope{ID: id, Envelope: proto.Clone(env).(*smv1.EncryptedEnvelope)})
 
 	return &smv1.SendResponse{ServerMsgId: formatServerMsgID(id)}, nil
+}
+
+// UpdateReadMarker stores the provided server message identifier as the latest message read by the user.
+func (s *Service) UpdateReadMarker(ctx context.Context, conversationID, userID string, serverMsgID string) error {
+	if s.reads == nil {
+		return status.Error(codes.Unimplemented, "read markers are not supported by this store")
+	}
+	if strings.TrimSpace(conversationID) == "" {
+		return status.Error(codes.InvalidArgument, "conversation_id must be provided")
+	}
+	if strings.TrimSpace(userID) == "" {
+		return status.Error(codes.InvalidArgument, "user_id must be provided")
+	}
+
+	id, err := parseServerMsgID(serverMsgID)
+	if err != nil {
+		return status.Errorf(codes.InvalidArgument, "invalid server message id: %v", err)
+	}
+	if id == 0 {
+		return status.Error(codes.InvalidArgument, "server message id must be greater than zero")
+	}
+
+	if err := s.reads.UpdateReadMarker(ctx, conversationID, userID, id); err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return status.FromContextError(err).Err()
+		}
+		return status.Errorf(codes.Internal, "store read marker: %v", err)
+	}
+	return nil
+}
+
+// ReadMarkers returns a snapshot of persisted read markers if supported.
+func (s *Service) ReadMarkers(ctx context.Context) (map[string]map[string]int64, error) {
+	if s.reads == nil {
+		return nil, nil
+	}
+	markers, err := s.reads.ReadMarkers(ctx)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, status.FromContextError(err).Err()
+		}
+		return nil, status.Errorf(codes.Internal, "read markers: %v", err)
+	}
+	return markers, nil
 }
 
 // Pull streams envelopes with server identifiers greater than the provided marker.
