@@ -77,12 +77,6 @@ ApplicationWindow {
             }
 
             Button {
-                text: qsTr("Обновить справочник")
-                icon.name: "reload"
-                onClicked: if (App && App.refreshUsers) App.refreshUsers()
-            }
-
-            Button {
                 text: qsTr("Сменить пользователя")
                 icon.name: "logout"
                 onClicked: if (App && App.resetRegistration) App.resetRegistration()
@@ -127,33 +121,38 @@ ApplicationWindow {
                         property string formError: ""
                         property bool busy: App && App.authBusy
 
-                        function performPrimaryAction() {
-                            if (authForm.busy) {
-                                return;
-                            }
-                            if (!App) {
-                                formError = qsTr("Сервис недоступен");
-                                return;
-                            }
-                            var result = registrationMode
-                                    ? (App.completeRegistration
-                                               ? App.completeRegistration(authNickname.text,
-                                                                          authPassword.text,
-                                                                          authCertificate.text)
+                          function performPrimaryAction() {
+                              if (authForm.busy) {
+                                  return;
+                              }
+                              if (!App) {
+                                  formError = qsTr("Сервис недоступен");
+                                  return;
+                              }
+                              if (registrationMode && authPassword.text !== authPasswordConfirm.text) {
+                                  formError = qsTr("Пароли не совпадают");
+                                  return;
+                              }
+                              var result = registrationMode
+                                      ? (App.completeRegistration
+                                                 ? App.completeRegistration(authNickname.text,
+                                                                            authPassword.text,
+                                                                            authCertificate.text)
                                                : qsTr("Сервис недоступен"))
                                     : (App.authenticate
                                                ? App.authenticate(authNickname.text,
                                                                   authPassword.text,
                                                                   authCertificate.text)
                                                : qsTr("Сервис недоступен"));
-                            if (result && result.length > 0) {
-                                formError = result;
-                            } else {
-                                formError = "";
-                                authPassword.text = "";
-                                authCertificate.text = "";
-                            }
-                        }
+                                  if (result && result.length > 0) {
+                                      formError = result;
+                                  } else {
+                                      formError = "";
+                                      authPassword.text = "";
+                                      authPasswordConfirm.text = "";
+                                      authCertificate.text = "";
+                                  }
+                              }
 
                         Label {
                             text: authForm.registrationMode ? qsTr("Создайте новый профиль Secure Messenger")
@@ -173,18 +172,20 @@ ApplicationWindow {
                             Layout.fillWidth: true
                         }
 
-                        Frame {
-                            Layout.fillWidth: true
-                            background: Rectangle {
-                                color: "#111827"
-                                radius: 12
-                                border.color: panelBorder
-                            }
+                          Frame {
+                              Layout.fillWidth: true
+                              implicitHeight: authFields.implicitHeight + 24
+                              background: Rectangle {
+                                  color: "#111827"
+                                  radius: 12
+                                  border.color: panelBorder
+                              }
 
-                            ColumnLayout {
-                                anchors.fill: parent
-                                anchors.margins: 16
-                                spacing: 16
+                              ColumnLayout {
+                                  id: authFields
+                                  anchors.fill: parent
+                                  anchors.margins: 16
+                                  spacing: 16
 
                                 TextField {
                                     id: authNickname
@@ -200,26 +201,40 @@ ApplicationWindow {
 
                                     Connections {
                                         target: App
-                                        function onRegistrationChanged() {
-                                            if (App && !App.registered) {
-                                                authNickname.forceActiveFocus()
-                                                authPassword.text = ""
-                                                authCertificate.text = ""
-                                                authForm.formError = ""
-                                            }
-                                        }
-                                    }
+                                          function onRegistrationChanged() {
+                                              if (App && !App.registered) {
+                                                  authNickname.forceActiveFocus()
+                                                  authPassword.text = ""
+                                                  authPasswordConfirm.text = ""
+                                                  authCertificate.text = ""
+                                                  authForm.formError = ""
+                                              }
+                                          }
+                                      }
                                 }
 
-                                TextField {
-                                    id: authPassword
-                                    Layout.fillWidth: true
-                                    placeholderText: qsTr("Пароль")
-                                    echoMode: TextInput.Password
-                                    selectByMouse: true
-                                    enabled: !authForm.busy
-                                    onAccepted: authCertificate.forceActiveFocus()
-                                }
+                                  TextField {
+                                      id: authPassword
+                                      Layout.fillWidth: true
+                                      placeholderText: qsTr("Пароль")
+                                      echoMode: TextInput.Password
+                                      selectByMouse: true
+                                      enabled: !authForm.busy
+                                      onAccepted: authForm.registrationMode
+                                                  ? authPasswordConfirm.forceActiveFocus()
+                                                  : authCertificate.forceActiveFocus()
+                                  }
+
+                                  TextField {
+                                      id: authPasswordConfirm
+                                      Layout.fillWidth: true
+                                      visible: authForm.registrationMode
+                                      placeholderText: qsTr("Подтвердите пароль")
+                                      echoMode: TextInput.Password
+                                      selectByMouse: true
+                                      enabled: !authForm.busy
+                                      onAccepted: authCertificate.forceActiveFocus()
+                                  }
 
                                 ColumnLayout {
                                     Layout.fillWidth: true
@@ -275,20 +290,23 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 spacing: 12
 
-                                Button {
-                                    id: primaryAction
-                                    Layout.fillWidth: true
-                                    Layout.preferredWidth: 200
-                                    text: authForm.registrationMode ? qsTr("Зарегистрироваться") : qsTr("Войти")
-                                    icon.name: authForm.registrationMode ? "account-circle" : "login"
-                                    enabled: !authForm.busy
-                                             && authNickname.text.trim().length > 0
-                                             && authPassword.text.length > 0
-                                             && authCertificate.text.trim().length > 0
-                                             && App
-                                             && (authForm.registrationMode ? App.completeRegistration : App.authenticate)
-                                    onClicked: authForm.performPrimaryAction()
-                                }
+                              Button {
+                                  id: primaryAction
+                                  Layout.fillWidth: true
+                                  Layout.preferredWidth: 200
+                                  text: authForm.registrationMode ? qsTr("Зарегистрироваться") : qsTr("Войти")
+                                  icon.name: authForm.registrationMode ? "account-circle" : "login"
+                                  enabled: !authForm.busy
+                                           && authNickname.text.trim().length > 0
+                                           && authPassword.text.length > 0
+                                           && (!authForm.registrationMode
+                                               || (authPasswordConfirm.text.length > 0
+                                                   && authPasswordConfirm.text === authPassword.text))
+                                           && authCertificate.text.trim().length > 0
+                                           && App
+                                           && (authForm.registrationMode ? App.completeRegistration : App.authenticate)
+                                  onClicked: authForm.performPrimaryAction()
+                              }
 
                                 BusyIndicator {
                                     Layout.preferredHeight: primaryAction.implicitHeight
@@ -298,18 +316,9 @@ ApplicationWindow {
                                 }
                             }
 
-                            Button {
-                                Layout.alignment: Qt.AlignHCenter
-                                text: qsTr("Обновить справочник")
-                                icon.name: "reload"
-                                display: Button.TextBesideIcon
-                                visible: App && App.refreshUsers
-                                enabled: visible && !authForm.busy
-                                onClicked: App.refreshUsers()
-                            }
-                        }
+                          }
 
-                        Rectangle {
+                          Rectangle {
                             Layout.fillWidth: true
                             Layout.preferredHeight: toggleLabel.implicitHeight + 16
                             radius: 12
@@ -329,15 +338,16 @@ ApplicationWindow {
                                 anchors.fill: parent
                                 enabled: !authForm.busy
                                 cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                                onClicked: {
-                                    authForm.registrationMode = !authForm.registrationMode
-                                    authForm.formError = ""
-                                    authPassword.text = ""
-                                    authCertificate.text = ""
-                                    authNickname.forceActiveFocus()
-                                }
-                            }
-                        }
+                                      onClicked: {
+                                          authForm.registrationMode = !authForm.registrationMode
+                                          authForm.formError = ""
+                                          authPassword.text = ""
+                                          authPasswordConfirm.text = ""
+                                          authCertificate.text = ""
+                                          authNickname.forceActiveFocus()
+                                      }
+                                  }
+                              }
 
                         Frame {
                             Layout.fillWidth: true
@@ -963,7 +973,7 @@ ApplicationWindow {
                     visible: directoryList.count === 0 || directoryList.contentHeight === 0
 
                     Label {
-                        text: qsTr("Справочник пуст. Нажмите \"Обновить справочник\" в окне или на панели инструментов.")
+                        text: qsTr("Справочник пока пуст. Подождите синхронизации или попробуйте позже.")
                         color: subtleText
                         wrapMode: Text.WordWrap
                         horizontalAlignment: Text.AlignHCenter
@@ -971,13 +981,14 @@ ApplicationWindow {
                 }
             }
 
-            Label {
-                text: qsTr("Чат будет создан с использованием общего идентификатора канала")
-                color: subtleText
-                font.pixelSize: 12
-                wrapMode: Text.WordWrap
-                Layout.fillWidth: true
-            }
+              Label {
+                  text: qsTr("Чат будет создан с использованием общего идентификатора канала")
+                  color: subtleText
+                  font.pixelSize: 12
+                  wrapMode: Text.WordWrap
+                  Layout.fillWidth: true
+                  Layout.bottomMargin: 6
+              }
         }
 
         footer: RowLayout {
