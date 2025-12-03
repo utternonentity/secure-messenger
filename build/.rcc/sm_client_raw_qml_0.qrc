@@ -1,6 +1,0 @@
-<RCC>
-  <qresource prefix="/smclient/">
-    <file alias="qml/Main.qml">/home/yves/pet_projects/secure-messenger/client-qt/qml/Main.qml</file>
-  </qresource>
-</RCC>
-

@@ -134,7 +134,7 @@ private:
     void ensureDirectoryContainsAuthUser();
     User *findUser(const QString &userId);
     Device *findDevice(const QString &userId, const QString &deviceId);
-    void promoteConversation(const QString &conversationId);
+    void promoteConversation(const QString &conversationId, qint64 activityHint = 0);
     void rebuildConversationOrder();
     void touchConversationActivity(const QString &conversationId, qint64 unixTimestamp);
     qint64 lastActivityForConversation(const QString &conversationId) const;

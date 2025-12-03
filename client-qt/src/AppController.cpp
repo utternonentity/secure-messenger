@@ -146,7 +146,7 @@ void AppController::setCurrentConversation(const QString &conversationId)
     if (!m_conversations.contains(trimmed)) {
         m_conversations.insert(trimmed, {});
     }
-    promoteConversation(trimmed);
+    promoteConversation(trimmed, lastActivityForConversation(trimmed));
 
     const bool changed = trimmed != m_currentConversation;
     m_currentConversation = trimmed;
@@ -185,7 +185,7 @@ void AppController::send(const QString &text)
     if (!m_conversations.contains(m_currentConversation)) {
         m_conversations.insert(m_currentConversation, {});
     }
-    promoteConversation(m_currentConversation);
+    promoteConversation(m_currentConversation, QDateTime::currentDateTimeUtc().toSecsSinceEpoch());
     emit conversationListChanged();
 
     appendLog(QStringLiteral("Messaging.Send -> отправка в канал %1")
@@ -624,6 +624,7 @@ void AppController::initializeAfterRegistration()
     loadServerData();
     applyRegisteredIdentity();
     ensureDirectoryContainsAuthUser();
+    markConversationRead(m_currentConversation);
 
     int totalMessages = 0;
     for (const QList<Message> &messages : std::as_const(m_conversations)) {
@@ -1490,7 +1491,7 @@ void AppController::addServerMessage(const QString &conversationId,
     updateLastServerMsgId(serverMsgId);
     touchConversationActivity(trimmedId, message.sentUnixSec);
 
-    promoteConversation(trimmedId);
+    promoteConversation(trimmedId, message.sentUnixSec);
     if (trimmedId == m_currentConversation) {
         markConversationRead(trimmedId);
     }
@@ -1520,7 +1521,7 @@ QString AppController::addMessage(const QString &conversationId, const QString &
     message.sentUnixSec = QDateTime::currentDateTimeUtc().toSecsSinceEpoch();
     QList<Message> &messages = m_conversations[trimmedId];
     messages.append(message);
-    promoteConversation(trimmedId);
+    promoteConversation(trimmedId, message.sentUnixSec);
     if (trimmedId == m_currentConversation) {
         markConversationRead(trimmedId);
     }
@@ -1614,7 +1615,15 @@ void AppController::touchConversationActivity(const QString &conversationId, qin
         return;
     }
 
-    const qint64 effectiveTs = unixTimestamp > 0 ? unixTimestamp : QDateTime::currentDateTimeUtc().toSecsSinceEpoch();
+    qint64 effectiveTs = unixTimestamp;
+    if (effectiveTs <= 0) {
+        const qint64 lastKnown = lastActivityForConversation(trimmed);
+        if (lastKnown > 0) {
+            effectiveTs = lastKnown;
+        } else {
+            effectiveTs = QDateTime::currentDateTimeUtc().toSecsSinceEpoch();
+        }
+    }
     const auto it = m_conversationActivity.find(trimmed);
     if (it == m_conversationActivity.end() || effectiveTs > it.value()) {
         m_conversationActivity.insert(trimmed, effectiveTs);
@@ -1666,7 +1675,7 @@ int AppController::unreadCountFor(const QString &conversationId) const
     return unread;
 }
 
-void AppController::promoteConversation(const QString &conversationId)
+void AppController::promoteConversation(const QString &conversationId, qint64 activityHint)
 {
     const QString trimmed = conversationId.trimmed();
     if (trimmed.isEmpty()) {
@@ -1678,7 +1687,11 @@ void AppController::promoteConversation(const QString &conversationId)
     if (!m_conversations.contains(trimmed)) {
         m_conversations.insert(trimmed, {});
     }
-    touchConversationActivity(trimmed, QDateTime::currentDateTimeUtc().toSecsSinceEpoch());
+    qint64 activity = activityHint;
+    if (activity <= 0) {
+        activity = lastActivityForConversation(trimmed);
+    }
+    touchConversationActivity(trimmed, activity);
     rebuildConversationOrder();
 }
 

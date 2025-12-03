@@ -732,7 +732,7 @@ ApplicationWindow {
 
                         Pane {
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 220
+                            Layout.preferredHeight: 160
                             padding: 16
                             background: Rectangle {
                                 color: panelColor
