@@ -23,6 +23,22 @@ ApplicationWindow {
     readonly property color subtleText: "#9ca3af"
     readonly property color bubbleOutgoing: "#244c7a"
     readonly property color bubbleIncoming: "#1f6f43"
+    property var messageDrafts: ({})
+    property string previousConversationId: ""
+
+    function syncDraftOnSwitch(newConversationId) {
+        if (!input)
+            return
+        if (previousConversationId && previousConversationId.length > 0) {
+            messageDrafts[previousConversationId] = input.text
+        }
+        previousConversationId = newConversationId || ""
+        if (!previousConversationId || previousConversationId.length === 0) {
+            input.text = ""
+        } else {
+            input.text = messageDrafts[previousConversationId] || ""
+        }
+    }
 
     header: ToolBar {
         id: mainToolbar
@@ -712,13 +728,19 @@ ApplicationWindow {
                                         id: input
                                         Layout.fillWidth: true
                                         placeholderText: qsTr("Сообщение (шифруется на клиенте перед отправкой)…")
+                                        enabled: App && App.currentConversation && App.currentConversation.length > 0
+                                        readOnly: !enabled
                                         onAccepted: sendButton.clicked()
+                                        onTextChanged: {
+                                            if (App && App.currentConversation && App.currentConversation.length > 0)
+                                                messageDrafts[App.currentConversation] = text
+                                        }
                                     }
 
                                     Button {
                                         id: sendButton
                                         text: qsTr("Отправить")
-                                        enabled: App && App.send
+                                        enabled: App && App.send && App.currentConversation && App.currentConversation.length > 0
                                         onClicked: {
                                             if (!App || input.text.length === 0)
                                                 return
@@ -965,11 +987,19 @@ ApplicationWindow {
 
     Connections {
         target: App
+        function onCurrentConversationChanged() {
+            window.syncDraftOnSwitch(App.currentConversation)
+        }
         function onRegistrationChanged() {
             if (App && App.registered && App.refreshUsers)
                 App.refreshUsers()
         }
     }
 
-    Component.onCompleted: if (App && App.registered && App.refreshUsers) App.refreshUsers()
+    Component.onCompleted: {
+        window.previousConversationId = App && App.currentConversation ? App.currentConversation : ""
+        window.syncDraftOnSwitch(window.previousConversationId)
+        if (App && App.registered && App.refreshUsers)
+            App.refreshUsers()
+    }
 }

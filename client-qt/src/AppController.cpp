@@ -136,6 +136,12 @@ void AppController::setCurrentConversation(const QString &conversationId)
 {
     const QString trimmed = conversationId.trimmed();
     if (trimmed.isEmpty()) {
+        const bool changed = !m_currentConversation.isEmpty();
+        m_currentConversation.clear();
+        if (changed) {
+            emit currentConversationChanged();
+            emit conversationChanged();
+        }
         return;
     }
     if (!isConversationVisible(trimmed)) {
@@ -179,6 +185,10 @@ void AppController::send(const QString &text)
 {
     const QString trimmed = text.trimmed();
     if (trimmed.isEmpty()) {
+        return;
+    }
+    if (m_currentConversation.trimmed().isEmpty()) {
+        appendLog(QStringLiteral("Messaging.Send -> канал не выбран"));
         return;
     }
 
@@ -476,6 +486,7 @@ void AppController::resetRegistration()
     m_nextMessageId = 1;
     m_accessToken.clear();
     m_tokenExpiry = QDateTime();
+    settings.remove(QStringLiteral("messaging/readMarkers"));
     setAuthBusy(false);
 
     appendLog(QStringLiteral("Registration -> профиль сброшен, повторите регистрацию"));
@@ -609,7 +620,6 @@ void AppController::initializeAfterRegistration()
     if (m_initialized) {
         applyRegisteredIdentity();
         ensureDirectoryContainsAuthUser();
-        markConversationRead(m_currentConversation);
         emit authInfoChanged();
         emit userListChanged();
         emit conversationListChanged();
@@ -624,7 +634,6 @@ void AppController::initializeAfterRegistration()
     loadServerData();
     applyRegisteredIdentity();
     ensureDirectoryContainsAuthUser();
-    markConversationRead(m_currentConversation);
 
     int totalMessages = 0;
     for (const QList<Message> &messages : std::as_const(m_conversations)) {
@@ -745,29 +754,7 @@ void AppController::loadServerData()
     }
 
     const bool historyLoaded = loadMessageHistory(messagesPath);
-
-    if (m_currentConversation.trimmed().isEmpty()) {
-        if (!m_conversationOrder.isEmpty()) {
-            m_currentConversation = m_conversationOrder.constFirst();
-        } else if (!m_conversations.isEmpty()) {
-            m_currentConversation = m_conversations.constBegin().key();
-        }
-    }
-
-    if (!isConversationVisible(m_currentConversation)) {
-        m_currentConversation.clear();
-    }
-
-    for (auto it = m_conversations.constBegin(); it != m_conversations.constEnd(); ++it) {
-        const qint64 activity = lastActivityForConversation(it.key());
-        if (activity > 0) {
-            m_conversationReadMarkers.insert(it.key(), activity);
-        }
-    }
-
-    if (!m_currentConversation.isEmpty()) {
-        markConversationRead(m_currentConversation);
-    }
+    loadReadMarkers();
 
     if (!usersLoaded) {
         appendLog(QStringLiteral("Directory.Load -> не удалось прочитать %1, использованы встроенные данные")
@@ -957,13 +944,6 @@ bool AppController::loadMessageHistory(const QString &path)
     }
 
     rebuildConversationOrder();
-
-    for (auto it = m_conversations.constBegin(); it != m_conversations.constEnd(); ++it) {
-        const qint64 activity = lastActivityForConversation(it.key());
-        if (activity > 0) {
-            m_conversationReadMarkers.insert(it.key(), activity);
-        }
-    }
 
     return true;
 }
@@ -1647,6 +1627,39 @@ qint64 AppController::lastActivityForConversation(const QString &conversationId)
     return m_conversationActivity.value(conversationId, 0);
 }
 
+void AppController::loadReadMarkers()
+{
+    QSettings settings;
+    const QVariantMap stored = settings.value(QStringLiteral("messaging/readMarkers")).toMap();
+    for (auto it = stored.constBegin(); it != stored.constEnd(); ++it) {
+        const QString conversationId = it.key().trimmed();
+        const qint64 marker = it.value().toLongLong();
+        if (conversationId.isEmpty() || marker <= 0) {
+            continue;
+        }
+        if (!isConversationVisible(conversationId)) {
+            continue;
+        }
+        if (!m_conversations.contains(conversationId)) {
+            continue;
+        }
+        m_conversationReadMarkers.insert(conversationId, marker);
+    }
+}
+
+void AppController::persistReadMarkers() const
+{
+    QSettings settings;
+    QVariantMap serialized;
+    for (auto it = m_conversationReadMarkers.constBegin(); it != m_conversationReadMarkers.constEnd(); ++it) {
+        if (it.value() > 0) {
+            serialized.insert(it.key(), it.value());
+        }
+    }
+    settings.setValue(QStringLiteral("messaging/readMarkers"), serialized);
+    settings.sync();
+}
+
 void AppController::markConversationRead(const QString &conversationId)
 {
     const QString trimmed = conversationId.trimmed();
@@ -1655,7 +1668,12 @@ void AppController::markConversationRead(const QString &conversationId)
     }
 
     const qint64 activity = lastActivityForConversation(trimmed);
-    m_conversationReadMarkers.insert(trimmed, activity);
+    if (activity > 0) {
+        m_conversationReadMarkers.insert(trimmed, activity);
+    } else {
+        m_conversationReadMarkers.remove(trimmed);
+    }
+    persistReadMarkers();
 }
 
 int AppController::unreadCountFor(const QString &conversationId) const

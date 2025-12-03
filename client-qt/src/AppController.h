@@ -116,6 +116,8 @@ private:
     int handleMessagesResponse(const QJsonDocument &doc);
     void postMessageToServer(const QString &conversationId, const QString &text);
     void updateLastServerMsgId(const QString &serverMsgId);
+    void loadReadMarkers();
+    void persistReadMarkers() const;
     qint64 parseServerMsgNumeric(const QString &serverMsgId) const;
     QUrl buildApiUrl(const QString &path, const QUrlQuery &query = {}) const;
     void addServerMessage(const QString &conversationId,

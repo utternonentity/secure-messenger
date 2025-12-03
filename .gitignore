@@ -27,7 +27,7 @@
 *.log
 
 # Go (server)
-server/bin/
+server/server
 coverage.out
 *.db
 *.json
