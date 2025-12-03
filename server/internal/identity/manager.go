@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -83,7 +84,7 @@ func (m *Manager) load() error {
 		return fmt.Errorf("read identity store: %w", err)
 	}
 	wrapper := storeFile{}
-	if err := json.Unmarshal(data, &wrapper); err != nil {
+	if err := decodeStore(data, &wrapper); err != nil {
 		return fmt.Errorf("unmarshal identity store: %w", err)
 	}
 	needsPersist := false
@@ -110,20 +111,34 @@ func (m *Manager) load() error {
 	return nil
 }
 
+func decodeStore(data []byte, dest *storeFile) error {
+	if len(data) == 0 {
+		return nil
+	}
+	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(dest); err == nil {
+		return nil
+	}
+	if err := json.Unmarshal(data, dest); err == nil {
+		return nil
+	} else {
+		return err
+	}
+}
+
 func (m *Manager) persistLocked() error {
 	wrapper := storeFile{Users: make([]storedUser, 0, len(m.users))}
 	for _, user := range m.users {
 		wrapper.Users = append(wrapper.Users, user)
 	}
-	data, err := json.MarshalIndent(&wrapper, "", "  ")
-	if err != nil {
+	buf := &bytes.Buffer{}
+	if err := gob.NewEncoder(buf).Encode(&wrapper); err != nil {
 		return fmt.Errorf("marshal identity store: %w", err)
 	}
 	tmpPath := m.path + ".tmp"
 	if err := os.MkdirAll(filepath.Dir(m.path), 0o755); err != nil && !errors.Is(err, os.ErrExist) {
 		return fmt.Errorf("prepare identity directory: %w", err)
 	}
-	if err := os.WriteFile(tmpPath, data, 0o600); err != nil {
+	if err := os.WriteFile(tmpPath, buf.Bytes(), 0o600); err != nil {
 		return fmt.Errorf("write identity store: %w", err)
 	}
 	if err := os.Rename(tmpPath, m.path); err != nil {

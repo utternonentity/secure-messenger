@@ -91,7 +91,7 @@ func parseConfig() serverConfig {
 	clientCAPath := flag.String("client-ca", "/home/yves/secure-messenger/certs/client_ca.pem", "Path to the client CA bundle")
 	listenAddr := flag.String("listen", ":8443", "Address the server should listen on")
 	storePath := flag.String("store", "data/messages.db", "Path to the message store file")
-	identityPath := flag.String("identity-store", "data/identity_store.json", "Path to the identity store file")
+	identityPath := flag.String("identity-store", "data/identity.db", "Path to the identity store file")
 	httpListenAddr := flag.String("http-listen", ":8080", "Address the HTTP API should listen on")
 	messageKey := flag.String("message-key", envOrDefault("SM_MESSAGE_KEY", messaging.DefaultMessageKeyBase64), "Base64-encoded AES-256 key for encrypting HTTP messages")
 	flag.Parse()

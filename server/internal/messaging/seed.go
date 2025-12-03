@@ -1,8 +1,8 @@
 package messaging
 
 import (
-	"encoding/base64"
-	"encoding/json"
+	"bytes"
+	"encoding/gob"
 	"errors"
 	"fmt"
 	"os"
@@ -24,25 +24,25 @@ func EnsureSeedData(path string, cipher EnvelopeCipher) error {
 		return fmt.Errorf("messaging: check seed store: %w", err)
 	}
 
-	encode := func(id int64, conversation, sender, text string, sentUnix int64) (jsonMessage, error) {
+	encode := func(id int64, conversation, sender, text string, sentUnix int64) (storedMessage, error) {
 		ciphertext, err := cipher.Encrypt([]byte(text))
 		if err != nil {
-			return jsonMessage{}, fmt.Errorf("messaging: encrypt seed message %d: %w", id, err)
+			return storedMessage{}, fmt.Errorf("messaging: encrypt seed message %d: %w", id, err)
 		}
-		return jsonMessage{
+		return storedMessage{
 			ID:             id,
 			ConversationID: conversation,
 			SenderUserID:   sender,
 			SentUnixSec:    sentUnix,
-			CiphertextB64:  base64.StdEncoding.EncodeToString(ciphertext),
+			Ciphertext:     ciphertext,
 		}, nil
 	}
 
-	sample := jsonStore{Messages: make([]jsonMessage, 0, 6)}
+	sample := storeSnapshot{Messages: make([]storedMessage, 0, 6)}
 	if cipher != nil {
 		sample.KeyFingerprint = cipher.Fingerprint()
 	}
-	appendMsg := func(msg jsonMessage, err error) error {
+	appendMsg := func(msg storedMessage, err error) error {
 		if err != nil {
 			return err
 		}
@@ -68,8 +68,8 @@ func EnsureSeedData(path string, cipher EnvelopeCipher) error {
 		return err
 	}
 
-	data, err := json.MarshalIndent(&sample, "", "  ")
-	if err != nil {
+	buf := &bytes.Buffer{}
+	if err := gob.NewEncoder(buf).Encode(&sample); err != nil {
 		return fmt.Errorf("messaging: marshal seed messages: %w", err)
 	}
 	dir := filepath.Dir(path)
@@ -78,7 +78,7 @@ func EnsureSeedData(path string, cipher EnvelopeCipher) error {
 			return fmt.Errorf("messaging: create seed directory: %w", err)
 		}
 	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	if err := os.WriteFile(path, buf.Bytes(), 0o600); err != nil {
 		return fmt.Errorf("messaging: write seed messages: %w", err)
 	}
 	return nil

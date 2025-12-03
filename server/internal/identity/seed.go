@@ -1,7 +1,8 @@
 package identity
 
 import (
-	"encoding/json"
+	"bytes"
+	"encoding/gob"
 	"errors"
 	"fmt"
 	"os"
@@ -47,8 +48,8 @@ func EnsureSeedData(path string) error {
 	}
 
 	wrapper := storeFile{Users: users}
-	data, err := json.MarshalIndent(&wrapper, "", "  ")
-	if err != nil {
+	buf := &bytes.Buffer{}
+	if err := gob.NewEncoder(buf).Encode(&wrapper); err != nil {
 		return fmt.Errorf("identity: marshal seed store: %w", err)
 	}
 
@@ -58,7 +59,7 @@ func EnsureSeedData(path string) error {
 			return fmt.Errorf("identity: create seed directory: %w", err)
 		}
 	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	if err := os.WriteFile(path, buf.Bytes(), 0o600); err != nil {
 		return fmt.Errorf("identity: write seed store: %w", err)
 	}
 	return nil

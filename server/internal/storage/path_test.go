@@ -18,8 +18,8 @@ func TestResolveDataPathPrefersRootCopy(t *testing.T) {
 		t.Fatalf("create module data dir: %v", err)
 	}
 
-	rootStore := filepath.Join(repoRoot, "data", "identity_store.json")
-	nestedStore := filepath.Join(moduleDir, "data", "identity_store.json")
+	rootStore := filepath.Join(repoRoot, "data", "identity.db")
+	nestedStore := filepath.Join(moduleDir, "data", "identity.db")
 	if err := os.WriteFile(rootStore, []byte("root"), 0o600); err != nil {
 		t.Fatalf("seed root store: %v", err)
 	}
@@ -39,7 +39,7 @@ func TestResolveDataPathPrefersRootCopy(t *testing.T) {
 		_ = os.Chdir(origWD)
 	})
 
-	res, err := ResolveDataPath("data/identity_store.json")
+	res, err := ResolveDataPath("data/identity.db")
 	if err != nil {
 		t.Fatalf("resolve path: %v", err)
 	}

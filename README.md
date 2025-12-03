@@ -97,7 +97,7 @@ powershell -ExecutionPolicy Bypass -File build-scripts/install_client.ps1
    SM_TLS_CLIENT_CA=/opt/secure-messenger/certs/client_ca.pem
    SM_MESSAGE_KEY=KpEyIdHR3J8zvm64LKGhXgeOy4cmh09YkHxAUlPAuro=
    SM_STORE=/opt/secure-messenger/data/messages.db
-   SM_IDENTITY_STORE=/opt/secure-messenger/data/identity_store.json
+   SM_IDENTITY_STORE=/opt/secure-messenger/data/identity.db
    ENV
    ```
    `SM_MESSAGE_KEY` — base64-кодированный 32-байтовый ключ для AES-256-GCM, которым шифруются полезные нагрузки HTTP API. В
@@ -134,7 +134,7 @@ SM_TLS_CLIENT_CA=certs/client_ca.pem \
 SM_LISTEN_ADDR=:8443 \
 SM_MESSAGE_KEY=KpEyIdHR3J8zvm64LKGhXgeOy4cmh09YkHxAUlPAuro= \
 SM_STORE=data/messages.db \
-SM_IDENTITY_STORE=data/identity_store.json \
+SM_IDENTITY_STORE=data/identity.db \
 ./bin/server --http-listen :8080
 ```
 
@@ -279,7 +279,7 @@ openssl pkcs12 -export \
 
 ## 9. Эксплуатация
 
-- Файлы `messages.db` и `identity_store.json` располагаются в директории, указанной переменными `SM_STORE` и `SM_IDENTITY_STORE`. Настройте резервное копирование.
+- Файлы `messages.db` и `identity.db` представляют собой бинарные базы (gob) и располагаются в директории, указанной переменными `SM_STORE` и `SM_IDENTITY_STORE`. Настройте резервное копирование.
 - Для добавления нового устройства выпустите новый сертификат, повторите регистрацию и передайте его пользователю.
 - Логи сервера перенаправляются в `logs/server.log`, если используется рекомендованный `systemd` юнит.
 

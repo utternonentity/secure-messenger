@@ -1,8 +1,10 @@
 package messaging
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -47,18 +49,19 @@ type fileRecord struct {
 	envelope *smv1.EncryptedEnvelope
 }
 
-type jsonStore struct {
-	Messages       []jsonMessage               `json:"messages"`
+type storeSnapshot struct {
+	Messages       []storedMessage             `json:"messages"`
 	KeyFingerprint string                      `json:"key_fingerprint,omitempty"`
 	ReadMarkers    map[string]map[string]int64 `json:"read_markers,omitempty"`
 }
 
-type jsonMessage struct {
+type storedMessage struct {
 	ID             int64  `json:"id"`
 	ConversationID string `json:"conversation_id"`
 	SenderUserID   string `json:"sender_user_id"`
 	SentUnixSec    int64  `json:"sent_unix_sec"`
-	CiphertextB64  string `json:"ciphertext_b64"`
+	Ciphertext     []byte `json:"ciphertext,omitempty"`
+	CiphertextB64  string `json:"ciphertext_b64,omitempty"`
 	Plaintext      string `json:"text,omitempty"`
 	ServerMsgID    string `json:"server_msg_id,omitempty"`
 }
@@ -106,21 +109,15 @@ func (s *fileStore) load() (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("read message store: %w", err)
 	}
-	if len(data) == 0 {
-		s.records = nil
-		s.nextID = 0
-		s.readMarkers = make(map[string]map[string]int64)
-		return false, nil
-	}
-	var wrapper jsonStore
-	if err := json.Unmarshal(data, &wrapper); err != nil {
+	snapshot, err := decodeSnapshot(data)
+	if err != nil {
 		return false, fmt.Errorf("unmarshal message store: %w", err)
 	}
-	s.keyFingerprint = strings.TrimSpace(wrapper.KeyFingerprint)
+	s.keyFingerprint = strings.TrimSpace(snapshot.KeyFingerprint)
 	s.readMarkers = make(map[string]map[string]int64)
-	records := make([]fileRecord, 0, len(wrapper.Messages))
+	records := make([]fileRecord, 0, len(snapshot.Messages))
 	var maxID int64
-	for _, msg := range wrapper.Messages {
+	for _, msg := range snapshot.Messages {
 		env := &smv1.EncryptedEnvelope{Meta: &smv1.EnvelopeMeta{}}
 		if msg.ConversationID != "" {
 			env.Meta.ConversationId = msg.ConversationID
@@ -144,25 +141,28 @@ func (s *fileStore) load() (bool, error) {
 			dirty = true
 		}
 
-		if msg.CiphertextB64 != "" {
+		ciphertext := append([]byte(nil), msg.Ciphertext...)
+		if len(ciphertext) == 0 && msg.CiphertextB64 != "" {
 			payload, err := base64.StdEncoding.DecodeString(msg.CiphertextB64)
 			if err != nil {
 				return false, fmt.Errorf("decode message %d ciphertext: %w", msg.ID, err)
 			}
-			env.Ciphertext = payload
+			ciphertext = payload
 		}
 
-		if len(env.Ciphertext) == 0 && strings.TrimSpace(msg.Plaintext) != "" {
+		if len(ciphertext) == 0 && strings.TrimSpace(msg.Plaintext) != "" {
 			if s.cipher == nil {
 				return false, fmt.Errorf("store cipher is required to encrypt plaintext messages")
 			}
-			ciphertext, err := s.cipher.Encrypt([]byte(msg.Plaintext))
+			encrypted, err := s.cipher.Encrypt([]byte(msg.Plaintext))
 			if err != nil {
 				return false, fmt.Errorf("encrypt legacy message %d: %w", id, err)
 			}
-			env.Ciphertext = ciphertext
+			ciphertext = encrypted
 			dirty = true
 		}
+
+		env.Ciphertext = ciphertext
 
 		records = append(records, fileRecord{id: id, envelope: env})
 		if id > maxID {
@@ -171,7 +171,7 @@ func (s *fileStore) load() (bool, error) {
 	}
 	s.records = records
 	s.nextID = maxID
-	for convID, markers := range wrapper.ReadMarkers {
+	for convID, markers := range snapshot.ReadMarkers {
 		convID = strings.TrimSpace(convID)
 		if convID == "" {
 			continue
@@ -190,6 +190,24 @@ func (s *fileStore) load() (bool, error) {
 	return dirty, nil
 }
 
+func decodeSnapshot(data []byte) (storeSnapshot, error) {
+	var snapshot storeSnapshot
+	if len(data) == 0 {
+		return snapshot, nil
+	}
+	var gobErr error
+	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&snapshot); err == nil {
+		return snapshot, nil
+	} else {
+		gobErr = err
+	}
+	var legacy storeSnapshot
+	if err := json.Unmarshal(data, &legacy); err == nil {
+		return legacy, nil
+	}
+	return snapshot, fmt.Errorf("decode snapshot: unsupported format (%v)", gobErr)
+}
+
 func (s *fileStore) persist() error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -197,18 +215,18 @@ func (s *fileStore) persist() error {
 }
 
 func (s *fileStore) persistLocked() error {
-	wrapper := jsonStore{Messages: make([]jsonMessage, 0, len(s.records))}
+	wrapper := storeSnapshot{Messages: make([]storedMessage, 0, len(s.records))}
 	for _, rec := range s.records {
 		env := rec.envelope
 		meta := env.GetMeta()
-		msg := jsonMessage{ID: rec.id}
+		msg := storedMessage{ID: rec.id}
 		if meta != nil {
 			msg.ConversationID = meta.GetConversationId()
 			msg.SenderUserID = meta.GetSenderUserId()
 			msg.SentUnixSec = meta.GetSentUnixSec()
 		}
 		if len(env.GetCiphertext()) > 0 {
-			msg.CiphertextB64 = base64.StdEncoding.EncodeToString(env.GetCiphertext())
+			msg.Ciphertext = append([]byte(nil), env.GetCiphertext()...)
 		}
 		wrapper.Messages = append(wrapper.Messages, msg)
 	}
@@ -236,8 +254,8 @@ func (s *fileStore) persistLocked() error {
 		}
 	}
 
-	data, err := json.MarshalIndent(&wrapper, "", "  ")
-	if err != nil {
+	buf := &bytes.Buffer{}
+	if err := gob.NewEncoder(buf).Encode(&wrapper); err != nil {
 		return fmt.Errorf("marshal message store: %w", err)
 	}
 	dir := filepath.Dir(s.path)
@@ -247,7 +265,7 @@ func (s *fileStore) persistLocked() error {
 		}
 	}
 	tmpPath := s.path + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0o600); err != nil {
+	if err := os.WriteFile(tmpPath, buf.Bytes(), 0o600); err != nil {
 		return fmt.Errorf("write message store: %w", err)
 	}
 	if err := os.Rename(tmpPath, s.path); err != nil {

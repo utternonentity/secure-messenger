@@ -275,7 +275,7 @@ void AppController::revokeDevice(const QString &userId, const QString &deviceId)
 
 void AppController::refreshUsers()
 {
-    const QString identityPath = QDir(resolveDataDirectory()).filePath(QStringLiteral("identity_store.json"));
+    const QString identityPath = QDir(resolveDataDirectory()).filePath(QStringLiteral("identity.db"));
     const bool reloaded = loadUserDirectory(identityPath);
     ensureDirectoryContainsAuthUser();
     if (reloaded) {
@@ -747,7 +747,7 @@ void AppController::loadServerData()
     m_nextMessageId = 1;
 
     const QString dataDir = resolveDataDirectory();
-    const QString identityPath = QDir(dataDir).filePath(QStringLiteral("identity_store.json"));
+    const QString identityPath = QDir(dataDir).filePath(QStringLiteral("identity.db"));
     const QString messagesPath = QDir(dataDir).filePath(QStringLiteral("messages.db"));
 
     const bool usersLoaded = loadUserDirectory(identityPath);
@@ -985,7 +985,7 @@ QString AppController::resolveDataDirectory() const
     QString readOnlyMatch;
 
     const auto hasDataArtifacts = [](const QDir &dir) {
-        return dir.exists(QStringLiteral("identity_store.json"))
+        return dir.exists(QStringLiteral("identity.db"))
                || dir.exists(QStringLiteral("messages.db"));
     };
 
@@ -1007,7 +1007,7 @@ QString AppController::resolveDataDirectory() const
 
         if (!info.isDir()) {
             const QString baseName = info.fileName();
-            if (baseName == QStringLiteral("identity_store.json") || baseName == QStringLiteral("messages.db")) {
+            if (baseName == QStringLiteral("identity.db") || baseName == QStringLiteral("messages.db")) {
                 return dir.absolutePath();
             }
         }
@@ -1091,7 +1091,7 @@ QString AppController::resolveDataDirectory() const
         QDir source(readOnlyMatch);
         QDir target(fallback);
 
-        const QStringList artifacts = {QStringLiteral("identity_store.json"), QStringLiteral("messages.db")};
+        const QStringList artifacts = {QStringLiteral("identity.db"), QStringLiteral("messages.db")};
         for (const QString &artifact : artifacts) {
             const QString srcPath = source.filePath(artifact);
             const QString dstPath = target.filePath(artifact);
@@ -2113,7 +2113,7 @@ bool AppController::persistCredentials() const
 
 QString AppController::identityStoreFilePath() const
 {
-    return QDir(resolveDataDirectory()).filePath(QStringLiteral("identity_store.json"));
+    return QDir(resolveDataDirectory()).filePath(QStringLiteral("identity.db"));
 }
 
 QString AppController::generateUserIdForNickname(const QString &nickname) const
