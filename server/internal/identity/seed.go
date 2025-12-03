@@ -21,33 +21,7 @@ func EnsureSeedData(path string) error {
 		return fmt.Errorf("identity: check seed store: %w", err)
 	}
 
-	adminPassword, err := hashPassword("swordfish")
-	if err != nil {
-		return fmt.Errorf("identity: hash seed password: %w", err)
-	}
-	userPassword, err := hashPassword("starlight")
-	if err != nil {
-		return fmt.Errorf("identity: hash seed password: %w", err)
-	}
-
-	users := []storedUser{
-		{
-			UserID:   "user-0001",
-			Nickname: "ironwarden",
-			Roles:    []string{"admin", "user"},
-			Password: adminPassword,
-			CertDER:  []byte("Device 01 primary"),
-		},
-		{
-			UserID:   "user-0002",
-			Nickname: "nova",
-			Roles:    []string{"user"},
-			Password: userPassword,
-			CertDER:  []byte("Maria laptop"),
-		},
-	}
-
-	wrapper := storeFile{Users: users}
+	wrapper := storeFile{Users: nil}
 	buf := &bytes.Buffer{}
 	if err := gob.NewEncoder(buf).Encode(&wrapper); err != nil {
 		return fmt.Errorf("identity: marshal seed store: %w", err)

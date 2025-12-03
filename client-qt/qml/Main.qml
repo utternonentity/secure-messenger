@@ -174,7 +174,7 @@ ApplicationWindow {
 
                           Frame {
                               Layout.fillWidth: true
-                              implicitHeight: authFields.implicitHeight + 24
+                              implicitHeight: authFields.implicitHeight + 36
                               background: Rectangle {
                                   color: "#111827"
                                   radius: 12
@@ -987,7 +987,7 @@ ApplicationWindow {
                   font.pixelSize: 12
                   wrapMode: Text.WordWrap
                   Layout.fillWidth: true
-                  Layout.bottomMargin: 6
+                  Layout.bottomMargin: 12
               }
         }
 
