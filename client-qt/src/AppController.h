@@ -137,6 +137,9 @@ private:
     void promoteConversation(const QString &conversationId);
     void rebuildConversationOrder();
     void touchConversationActivity(const QString &conversationId, qint64 unixTimestamp);
+    qint64 lastActivityForConversation(const QString &conversationId) const;
+    void markConversationRead(const QString &conversationId);
+    int unreadCountFor(const QString &conversationId) const;
     QString conversationDisplayName(const QString &conversationId) const;
     QString conversationSubtitle(const QString &conversationId) const;
     bool isConversationVisible(const QString &conversationId) const;
@@ -194,6 +197,7 @@ private:
     QString m_lastServerMsgId;
     QSet<QString> m_knownServerMsgIds;
     QHash<QString, qint64> m_conversationActivity;
+    QHash<QString, qint64> m_conversationReadMarkers;
     QNetworkAccessManager *m_networkManager = nullptr;
     QTimer *m_pollTimer = nullptr;
     QString m_apiBaseUrl;

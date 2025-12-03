@@ -147,16 +147,17 @@ void AppController::setCurrentConversation(const QString &conversationId)
         m_conversations.insert(trimmed, {});
     }
     promoteConversation(trimmed);
+
+    const bool changed = trimmed != m_currentConversation;
+    m_currentConversation = trimmed;
+    markConversationRead(trimmed);
     emit conversationListChanged();
 
-    if (trimmed == m_currentConversation) {
-        return;
+    if (changed) {
+        appendLog(QStringLiteral("Messaging.Pull -> подписка обновлена, канал %1").arg(m_currentConversation));
+        emit currentConversationChanged();
+        emit conversationChanged();
     }
-
-    m_currentConversation = trimmed;
-    appendLog(QStringLiteral("Messaging.Pull -> подписка обновлена, канал %1").arg(m_currentConversation));
-    emit currentConversationChanged();
-    emit conversationChanged();
 }
 
 bool AppController::isRegistered() const
@@ -470,6 +471,7 @@ void AppController::resetRegistration()
     m_serverLog.clear();
     m_knownServerMsgIds.clear();
     m_conversationActivity.clear();
+    m_conversationReadMarkers.clear();
     m_lastServerMsgId.clear();
     m_nextMessageId = 1;
     m_accessToken.clear();
@@ -592,6 +594,11 @@ QVariantList AppController::buildConversationList() const
         } else {
             entry.insert(QStringLiteral("lastTimestamp"), QString());
         }
+
+        const int unread = unreadCountFor(conversationId);
+        if (unread > 0) {
+            entry.insert(QStringLiteral("unreadCount"), unread);
+        }
         list.append(entry);
     }
     return list;
@@ -602,6 +609,7 @@ void AppController::initializeAfterRegistration()
     if (m_initialized) {
         applyRegisteredIdentity();
         ensureDirectoryContainsAuthUser();
+        markConversationRead(m_currentConversation);
         emit authInfoChanged();
         emit userListChanged();
         emit conversationListChanged();
@@ -722,6 +730,7 @@ void AppController::loadServerData()
     m_lastServerMsgId.clear();
     m_knownServerMsgIds.clear();
     m_conversationActivity.clear();
+    m_conversationReadMarkers.clear();
     m_nextMessageId = 1;
 
     const QString dataDir = resolveDataDirectory();
@@ -735,27 +744,28 @@ void AppController::loadServerData()
     }
 
     const bool historyLoaded = loadMessageHistory(messagesPath);
-    if (m_conversations.isEmpty()) {
-        m_conversations.insert(QStringLiteral("corp-secure-room"), {});
-        promoteConversation(QStringLiteral("corp-secure-room"));
-    }
 
     if (m_currentConversation.trimmed().isEmpty()) {
-        if (m_conversations.contains(QStringLiteral("corp-secure-room"))) {
-            m_currentConversation = QStringLiteral("corp-secure-room");
+        if (!m_conversationOrder.isEmpty()) {
+            m_currentConversation = m_conversationOrder.constFirst();
         } else if (!m_conversations.isEmpty()) {
             m_currentConversation = m_conversations.constBegin().key();
-        } else {
-            m_currentConversation = QStringLiteral("corp-secure-room");
         }
     }
 
     if (!isConversationVisible(m_currentConversation)) {
-        if (isConversationVisible(QStringLiteral("corp-secure-room"))) {
-            m_currentConversation = QStringLiteral("corp-secure-room");
-        } else {
-            m_currentConversation.clear();
+        m_currentConversation.clear();
+    }
+
+    for (auto it = m_conversations.constBegin(); it != m_conversations.constEnd(); ++it) {
+        const qint64 activity = lastActivityForConversation(it.key());
+        if (activity > 0) {
+            m_conversationReadMarkers.insert(it.key(), activity);
         }
+    }
+
+    if (!m_currentConversation.isEmpty()) {
+        markConversationRead(m_currentConversation);
     }
 
     if (!usersLoaded) {
@@ -774,26 +784,7 @@ bool AppController::loadUserDirectory(const QString &path)
     if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
         m_directory.clear();
         m_authenticatedRoles = QStringList{QStringLiteral("user")};
-
         m_authenticatedUser = User{};
-        m_authenticatedUser.userId = QStringLiteral("user-0001");
-        m_authenticatedUser.nickname = QStringLiteral("ironwarden");
-        m_authenticatedUser.devices.append({QStringLiteral("device-ivan-laptop"),
-                                            encodedCertificate(QStringLiteral("device-ivan-laptop"), QStringLiteral("primary")),
-                                            false});
-
-        User maria;
-        maria.userId = QStringLiteral("user-0002");
-        maria.nickname = QStringLiteral("nova");
-        maria.devices.append({QStringLiteral("device-maria-laptop"),
-                              encodedCertificate(QStringLiteral("device-maria-laptop"), QStringLiteral("laptop")),
-                              false});
-        maria.devices.append({QStringLiteral("device-maria-mobile"),
-                              encodedCertificate(QStringLiteral("device-maria-mobile"), QStringLiteral("mobile")),
-                              false});
-
-        m_directory.append(m_authenticatedUser);
-        m_directory.append(maria);
         return false;
     }
 
@@ -965,6 +956,13 @@ bool AppController::loadMessageHistory(const QString &path)
     }
 
     rebuildConversationOrder();
+
+    for (auto it = m_conversations.constBegin(); it != m_conversations.constEnd(); ++it) {
+        const qint64 activity = lastActivityForConversation(it.key());
+        if (activity > 0) {
+            m_conversationReadMarkers.insert(it.key(), activity);
+        }
+    }
 
     return true;
 }
@@ -1493,6 +1491,9 @@ void AppController::addServerMessage(const QString &conversationId,
     touchConversationActivity(trimmedId, message.sentUnixSec);
 
     promoteConversation(trimmedId);
+    if (trimmedId == m_currentConversation) {
+        markConversationRead(trimmedId);
+    }
     emit conversationListChanged();
 
     if (trimmedId == m_currentConversation) {
@@ -1520,6 +1521,9 @@ QString AppController::addMessage(const QString &conversationId, const QString &
     QList<Message> &messages = m_conversations[trimmedId];
     messages.append(message);
     promoteConversation(trimmedId);
+    if (trimmedId == m_currentConversation) {
+        markConversationRead(trimmedId);
+    }
     emit conversationListChanged();
     if (trimmedId == m_currentConversation) {
         emit conversationChanged();
@@ -1615,6 +1619,51 @@ void AppController::touchConversationActivity(const QString &conversationId, qin
     if (it == m_conversationActivity.end() || effectiveTs > it.value()) {
         m_conversationActivity.insert(trimmed, effectiveTs);
     }
+}
+
+qint64 AppController::lastActivityForConversation(const QString &conversationId) const
+{
+    const QList<Message> &messages = m_conversations.value(conversationId);
+    if (!messages.isEmpty()) {
+        const Message &last = messages.constLast();
+        if (last.sentUnixSec > 0) {
+            return last.sentUnixSec;
+        }
+        const qint64 parsed = parseServerMsgNumeric(last.serverMsgId);
+        if (parsed > 0) {
+            return parsed;
+        }
+    }
+
+    return m_conversationActivity.value(conversationId, 0);
+}
+
+void AppController::markConversationRead(const QString &conversationId)
+{
+    const QString trimmed = conversationId.trimmed();
+    if (trimmed.isEmpty()) {
+        return;
+    }
+
+    const qint64 activity = lastActivityForConversation(trimmed);
+    m_conversationReadMarkers.insert(trimmed, activity);
+}
+
+int AppController::unreadCountFor(const QString &conversationId) const
+{
+    const qint64 readMarker = m_conversationReadMarkers.value(conversationId, 0);
+    int unread = 0;
+
+    const QList<Message> messages = m_conversations.value(conversationId);
+    for (const Message &message : messages) {
+        const qint64 timestamp = message.sentUnixSec > 0 ? message.sentUnixSec
+                                                         : parseServerMsgNumeric(message.serverMsgId);
+        if (timestamp > readMarker && !message.outgoing) {
+            ++unread;
+        }
+    }
+
+    return unread;
 }
 
 void AppController::promoteConversation(const QString &conversationId)

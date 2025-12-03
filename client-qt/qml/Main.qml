@@ -490,6 +490,7 @@ ApplicationWindow {
                                         width: conversationsView.width
                                         property var entry: modelData
                                         property string conversationId: String(entry["id"] || "")
+                                        property int unreadCount: Number(entry["unreadCount"] || 0)
                                         property bool active: App && App.currentConversation === conversationId
                                         radius: 12
                                         border.width: active ? 2 : 1
@@ -512,6 +513,24 @@ ApplicationWindow {
                                                     font.bold: true
                                                     font.pixelSize: 15
                                                     elide: Text.ElideRight
+                                                }
+
+                                                Rectangle {
+                                                    visible: unreadCount > 0
+                                                    color: Material.accent
+                                                    radius: 10
+                                                    implicitHeight: 20
+                                                    implicitWidth: Math.max(unreadBadge.implicitWidth + 10, 20)
+                                                    Layout.alignment: Qt.AlignVCenter
+
+                                                    Label {
+                                                        id: unreadBadge
+                                                        anchors.centerIn: parent
+                                                        text: unreadCount
+                                                        font.pixelSize: 12
+                                                        font.bold: true
+                                                        color: "white"
+                                                    }
                                                 }
 
                                                 Label {
