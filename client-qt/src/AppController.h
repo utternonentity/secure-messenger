@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QDateTime>
+#include <QFile>
 #include <QHash>
 #include <QJsonDocument>
 #include <QObject>
@@ -138,6 +139,9 @@ private:
     QString resolveDataDirectory() const;
     QString nicknameForUserId(const QString &userId) const;
 
+    void initializeLogging();
+    void writeLogToFile(const QString &line);
+
     QString addMessage(const QString &conversationId, const QString &author, const QString &text, bool outgoing);
     void appendLog(const QString &entry);
     void ensureDirectoryContainsAuthUser();
@@ -216,4 +220,6 @@ private:
     QString m_accessToken;
     QDateTime m_tokenExpiry;
     QList<Credential> m_credentials;
+    QString m_logFilePath;
+    QFile m_logFile;
 };

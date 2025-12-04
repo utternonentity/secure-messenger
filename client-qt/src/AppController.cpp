@@ -103,6 +103,7 @@ AppController::AppController(const QString &apiBaseUrl, QObject *parent)
         }
     }
 
+    initializeLogging();
     loadCredentials();
     loadRegistration();
     if (m_isRegistered) {
@@ -1125,6 +1126,44 @@ QString AppController::resolveDataDirectory() const
     return tempDir.isEmpty() ? QDir::currentPath() : tempDir;
 }
 
+void AppController::initializeLogging()
+{
+    const QString dataDir = resolveDataDirectory();
+    if (dataDir.isEmpty()) {
+        return;
+    }
+
+    QDir dir(dataDir);
+    if (!dir.exists() && !dir.mkpath(QStringLiteral("."))) {
+        return;
+    }
+
+    const QString date = QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
+    m_logFilePath = dir.filePath(QStringLiteral("client-%1.log").arg(date));
+    m_logFile.setFileName(m_logFilePath);
+    if (m_logFile.isOpen()) {
+        m_logFile.close();
+    }
+
+    if (m_logFile.open(QIODevice::Append | QIODevice::Text)) {
+        const QString header = QStringLiteral("=== Session started %1 ===\n")
+                                   .arg(QDateTime::currentDateTime().toString(Qt::ISODate));
+        m_logFile.write(header.toUtf8());
+        m_logFile.flush();
+    } else {
+        m_logFilePath.clear();
+    }
+}
+
+void AppController::writeLogToFile(const QString &line)
+{
+    if (!m_logFile.isOpen()) {
+        return;
+    }
+    m_logFile.write(QStringLiteral("%1\n").arg(line).toUtf8());
+    m_logFile.flush();
+}
+
 QString AppController::nicknameForUserId(const QString &userId) const
 {
     if (userId == m_authenticatedUser.userId) {
@@ -1592,7 +1631,9 @@ QString AppController::addMessage(const QString &conversationId, const QString &
 void AppController::appendLog(const QString &entry)
 {
     const QString ts = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"));
-    m_serverLog.append(QStringLiteral("[%1] %2").arg(ts, entry));
+    const QString formatted = QStringLiteral("[%1] %2").arg(ts, entry);
+    m_serverLog.append(formatted);
+    writeLogToFile(formatted);
     emit serverLogChanged();
 }
 
