@@ -23,14 +23,91 @@ Secure Messenger — это минимально жизнеспособный п
 - Qt 6.5+ (модули Core, Qml, Quick).
 - Компилятор C++17 (gcc/clang/msvc).
 
-## 2. Структура репозитория
+### Установка зависимостей (Ubuntu 22.04+)
+Ниже пример полного окружения, на котором можно собрать и запустить сервер и Qt-клиент.
+
+```bash
+# Базовые инструменты и Go через snap
+sudo apt update
+sudo apt install snapd git -y
+sudo snap install go --classic
+
+# Компилятор protobuf и плагины для Go
+sudo apt install protobuf-compiler -y
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+# Qt-зависимости для клиента
+sudo apt install -y \
+  qt6-base-dev \
+  qt6-declarative-dev \
+  qt6-qmltooling-plugins \
+  qt6-tools-dev \
+  libgl1-mesa-dev \
+  build-essential \
+  cmake \
+  ninja-build
+sudo apt install qt6-websockets-dev -y
+sudo apt install -y \
+  libqt6qml6 \
+  libqt6quick6 \
+  libqt6quickcontrols2-6 \
+  qml6-module-qtquick \
+  qml6-module-qtquick-controls \
+  qml6-module-qtquick-layouts \
+  qml6-module-qtquick-dialogs \
+  qml6-module-qtqml-workerscript \
+  qml6-module-qtqml-models \
+  libqt6quicktemplates2-6 \
+  qml6-module-qtquick-templates \
+  qml6-module-qtquick-window
+```
+
+Если вы собираете форк (например, `github.com/roofn/secure-messenger`), обновите строку `module` в `server/go.mod` под своё имя
+пользователя перед выполнением `go mod tidy`.
+
+## 2. Быстрый старт (Ubuntu 22.04+)
+
+```bash
+# Клонируем репозиторий
+git clone https://github.com/roofn/secure-messenger.git
+cd secure-messenger
+
+# Подготавливаем Go-модуль и зависимости сервера
+cd server/
+# При необходимости поправьте module-путь в go.mod и только потом
+go mod tidy
+cd ..
+
+# Генерируем gRPC артефакты
+bash build-scripts/gen_proto.sh
+
+# Сборка серверного бинарника
+cd server
+go build ./cmd/server
+cd ..
+```
+
+Дальше создайте рабочую директорию `/opt/secure-messenger`, скопируйте туда бинарник, выпустите сертификаты и задайте переменные
+окружения (см. разделы ниже). Сервер можно запустить вручную или через `systemd`.
+
+Для клиента:
+
+```bash
+cmake -S client-qt -B build/client-qt -GNinja
+cmake --build build/client-qt
+```
+
+Исполняемый файл будет лежать в `build/client-qt/sm_client`.
+
+## 3. Структура репозитория
 - `build-scripts/` — скрипты генерации protobuf артефактов.
 - `client-qt/` — исходники демонстрационного клиента.
 - `data/` — файлы БД сервера (создаются/обновляются при запуске).
 - `proto/` — gRPC/HTTP схемы.
 - `server/` — код серверного приложения.
 
-## 3. Генерация gRPC артефактов
+## 4. Генерация gRPC артефактов
 Перед первой сборкой синхронизируйте protobuf-заготовки:
 
 ```bash
@@ -43,7 +120,7 @@ powershell -ExecutionPolicy Bypass -File build-scripts/gen_proto.ps1
 
 Команда пересоздаст файлы в `server/internal/gen` и клиентские stubs.
 
-## 4. Сборка
+## 5. Сборка
 
 ### Сервер
 ```bash
@@ -77,7 +154,7 @@ powershell -ExecutionPolicy Bypass -File build-scripts/install_client.ps1
 
 Исполняемый файл располагается в `build/client-qt/sm_client` (путь может отличаться на Windows/macOS).
 
-## 5. Настройка серверного узла
+## 6. Настройка серверного узла
 
 1. Создайте рабочий каталог и структуру хранения сертификатов и данных:
    ```bash
@@ -97,7 +174,7 @@ powershell -ExecutionPolicy Bypass -File build-scripts/install_client.ps1
    SM_TLS_CLIENT_CA=/opt/secure-messenger/certs/client_ca.pem
    SM_MESSAGE_KEY=KpEyIdHR3J8zvm64LKGhXgeOy4cmh09YkHxAUlPAuro=
    SM_STORE=/opt/secure-messenger/data/messages.db
-   SM_IDENTITY_STORE=/opt/secure-messenger/data/identity.db
+   SM_IDENTITY_STORE=/opt/secure-messenger/data/identity_store.json
    ENV
    ```
    `SM_MESSAGE_KEY` — base64-кодированный 32-байтовый ключ для AES-256-GCM, которым шифруются полезные нагрузки HTTP API. В
@@ -134,17 +211,17 @@ SM_TLS_CLIENT_CA=certs/client_ca.pem \
 SM_LISTEN_ADDR=:8443 \
 SM_MESSAGE_KEY=KpEyIdHR3J8zvm64LKGhXgeOy4cmh09YkHxAUlPAuro= \
 SM_STORE=data/messages.db \
-SM_IDENTITY_STORE=data/identity.db \
+SM_IDENTITY_STORE=data/identity_store.json \
 ./bin/server --http-listen :8080
 ```
 
 HTTP API по умолчанию слушает `:8080`, gRPC — `:8443`.
 
-## 6. Выпуск сертификатов
+## 7. Выпуск сертификатов
 
 Сервер и клиенты идентифицируются через mTLS. Один корневой центр сертификации (CA) выпускает сертификаты для сервера и устройств.
 
-### 6.1 Создание корневого CA
+### 7.1 Создание корневого CA
 ```bash
 mkdir -p /opt/secure-messenger/certs
 cd /opt/secure-messenger/certs
@@ -154,7 +231,7 @@ openssl req -x509 -new -key rootCA.key -sha256 -days 825 -out rootCA.pem \
 cp rootCA.pem client_ca.pem
 ```
 
-### 6.2 Выпуск серверного сертификата
+### 7.2 Выпуск серверного сертификата
 ```bash
 cat > server.cnf <<'EOF'
 [req]
@@ -184,7 +261,7 @@ openssl x509 -req -in server.csr -CA rootCA.pem -CAkey rootCA.key -CAcreateseria
 
 Поместите `server.pem` и `server.key` в `/opt/secure-messenger/certs/`. `client_ca.pem` остаётся рядом и используется сервером для проверки клиентских сертификатов.
 
-### 6.3 Выпуск клиентских сертификатов
+### 7.3 Выпуск клиентских сертификатов
 Для каждого устройства повторяйте шаблон, меняя `CN`, email и имя файла:
 
 ```bash
@@ -210,7 +287,7 @@ openssl x509 -req -in client-${CLIENT_ID}.csr -CA rootCA.pem -CAkey rootCA.key -
   -out client-${CLIENT_ID}.pem -days 365 -sha256 -extensions req_ext -extfile client-${CLIENT_ID}.cnf
 ```
 
-### 6.4 Передача сертификатов пользователям
+### 7.4 Передача сертификатов пользователям
 Пользовательскому устройству нужны:
 
 - личный сертификат `client-<id>.pem` и приватный ключ `client-<id>.key`;
@@ -228,11 +305,11 @@ openssl pkcs12 -export \
 
 Пароль от контейнера передавайте отдельным каналом связи. Секретный ключ `rootCA.key` должен храниться только на сервере выпускного центра и не распространяться.
 
-## 7. Регистрация пользователей
+## 8. Регистрация пользователей
 
 Сервер сопоставляет устройства с пользователями по клиентскому сертификату. Регистрация возможна:
 
-### 7.1 Через HTTP API
+### 8.1 Через HTTP API
 1. На устройстве пользователя преобразуйте сертификат в DER и закодируйте в base64:
    ```bash
    openssl x509 -in client-alice.pem -outform DER | base64 -w0 > alice.der.b64
@@ -253,7 +330,7 @@ openssl pkcs12 -export \
    ```
    Ответ содержит `user_id`, который нужно сохранить на устройстве.
 
-### 7.2 Через Qt-клиент
+### 8.2 Через Qt-клиент
 В форме регистрации укажите:
 - путь к клиентскому сертификату (PEM или DER);
 - приватный ключ, если он хранится отдельно;
@@ -261,7 +338,7 @@ openssl pkcs12 -export \
 
 Клиент отправит сертификат на `/api/auth/register`, сохранит выданный `user_id` и будет использовать его при подключениях.
 
-## 8. Настройка и запуск клиента
+## 9. Настройка и запуск клиента
 
 1. Соберите приложение (см. раздел 4).
 2. Скопируйте выданные файлы на устройство пользователя и настройте права доступа.
@@ -275,15 +352,21 @@ openssl pkcs12 -export \
    ./build/client-qt/sm_client
    ```
 
+   Вместо `SM_HTTP_API` можно передать IP сервера через флаг запуска клиента:
+
+   ```bash
+   ./build/client-qt/sm_client --server-ip 192.168.1.42
+   ```
+
 Интерфейс загрузит историю сообщений, покажет текущий диалог и будет регулярно опрашивать `/api/messages`. Отправленные сообщения уходят на сервер через `POST /api/messages`.
 
-## 9. Эксплуатация
+## 10. Эксплуатация
 
-- Файлы `messages.db` и `identity.db` представляют собой бинарные базы (gob) и располагаются в директории, указанной переменными `SM_STORE` и `SM_IDENTITY_STORE`. Настройте резервное копирование.
+- Файлы `messages.db` и `identity_store.json` представляют собой бинарные базы (gob) и располагаются в директории, указанной переменными `SM_STORE` и `SM_IDENTITY_STORE`. Настройте резервное копирование (расширение файла произвольно).
 - Для добавления нового устройства выпустите новый сертификат, повторите регистрацию и передайте его пользователю.
 - Логи сервера перенаправляются в `logs/server.log`, если используется рекомендованный `systemd` юнит.
 
-## 10. HTTP и gRPC интерфейсы
+## 11. HTTP и gRPC интерфейсы
 
 - `GET /api/messages?since_id=msg-5` — получить историю сообщений.
 - `POST /api/messages` — отправить сообщение:
@@ -298,7 +381,7 @@ openssl pkcs12 -export \
 
 Для отладки доступен gRPC с методами `sm.v1.Messaging/Pull` и `sm.v1.Messaging/Send`. Подключайтесь через `grpcurl`, указывая `-cacert`, `-cert`, `-key` и адрес `localhost:8443` или удалённый хост.
 
-## 11. Криптография, протоколы и хранение данных
+## 12. Криптография, протоколы и хранение данных
 
 - Транспорт: gRPC слушает по TLS 1.3 с обязательными клиентскими сертификатами (mTLS). Валидация проверяет наличие `CommonName` и парных SAN `sm://user` и `sm://device` в сертификате клиента, после чего сертификат сопоставляется с ранее зарегистрированным профилем. Для проверки клиентских цепочек используется `client_ca.pem`, а серверный ключ и сертификат берутся из `server.pem`/`server.key`. Валидацию выполняет `LoadServerTLSConfig`, подключённая в `cmd/server`. HTTP API может работать за тем же TLS-терминатором или реверс-прокси.
 - Шифрование полезной нагрузки HTTP: тела сообщений шифруются симметричным AES-256-GCM. Ключ задаётся переменной `SM_MESSAGE_KEY` (или флагом `--message-key`) как base64-строка длиной 32 байта; nonce генерируется случайно и приставляется к ciphertext, а отпечаток ключа сохраняется вместе с данными хранилища для выявления несоответствий конфигурации.

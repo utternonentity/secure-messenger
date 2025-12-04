@@ -987,7 +987,7 @@ ApplicationWindow {
                   font.pixelSize: 12
                   wrapMode: Text.WordWrap
                   Layout.fillWidth: true
-                  Layout.bottomMargin: 12
+                  Layout.bottomMargin: 18
               }
         }
 
@@ -998,6 +998,7 @@ ApplicationWindow {
             Button {
                 text: qsTr("Отмена")
                 onClicked: newChatDialog.close()
+                Layout.leftMargin: 10
             }
 
             Item { Layout.fillWidth: true }
@@ -1011,6 +1012,7 @@ ApplicationWindow {
                     if (enabled)
                         newChatDialog.accept()
                 }
+                Layout.rightMargin: 10
             }
         }
 

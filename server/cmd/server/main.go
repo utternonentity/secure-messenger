@@ -16,13 +16,14 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	"github.com/utternonentity/secure-messenger/server/internal/auth"
-	"github.com/utternonentity/secure-messenger/server/internal/directory"
-	smv1 "github.com/utternonentity/secure-messenger/server/internal/gen/sm/v1"
-	"github.com/utternonentity/secure-messenger/server/internal/identity"
-	"github.com/utternonentity/secure-messenger/server/internal/messaging"
-	"github.com/utternonentity/secure-messenger/server/internal/mtls"
-	"github.com/utternonentity/secure-messenger/server/internal/storage"
+	"github.com/roofn/secure-messenger/server/internal/auth"
+	"github.com/roofn/secure-messenger/server/internal/directory"
+	smv1 "github.com/roofn/secure-messenger/server/internal/gen/sm/v1"
+	"github.com/roofn/secure-messenger/server/internal/identity"
+	"github.com/roofn/secure-messenger/server/internal/logging"
+	"github.com/roofn/secure-messenger/server/internal/messaging"
+	"github.com/roofn/secure-messenger/server/internal/mtls"
+	"github.com/roofn/secure-messenger/server/internal/storage"
 )
 
 type serverConfig struct {
@@ -34,6 +35,7 @@ type serverConfig struct {
 	identityPath   string
 	httpListenAddr string
 	messageKey     string
+	logDir         string
 }
 
 type messageStore interface {
@@ -44,6 +46,8 @@ type messageStore interface {
 
 func main() {
 	cfg := parseConfig()
+	logFile := setupLogging(cfg.logDir)
+	defer closeLogFile(logFile)
 
 	identityStore := resolveDataPath(cfg.identityPath, "identity store")
 	messageStore := resolveDataPath(cfg.storePath, "message store")
@@ -86,14 +90,15 @@ func envOrDefault(key, fallback string) string {
 }
 
 func parseConfig() serverConfig {
-	certPath := flag.String("cert", "/home/yves/secure-messenger/certs/server.pem", "Path to the server TLS certificate")
-	keyPath := flag.String("key", "/home/yves/secure-messenger/certs/server.key", "Path to the server TLS private key")
-	clientCAPath := flag.String("client-ca", "/home/yves/secure-messenger/certs/client_ca.pem", "Path to the client CA bundle")
-	listenAddr := flag.String("listen", ":8443", "Address the server should listen on")
-	storePath := flag.String("store", "data/messages.db", "Path to the message store file")
-	identityPath := flag.String("identity-store", "data/identity.db", "Path to the identity store file")
+	certPath := flag.String("cert", envOrDefault("SM_TLS_CERT", "/opt/secure-messenger/certs/server.pem"), "Path to the server TLS certificate")
+	keyPath := flag.String("key", envOrDefault("SM_TLS_KEY", "/opt/secure-messenger/certs/server.key"), "Path to the server TLS private key")
+	clientCAPath := flag.String("client-ca", envOrDefault("SM_TLS_CLIENT_CA", "/opt/secure-messenger/certs/client_ca.pem"), "Path to the client CA bundle")
+	listenAddr := flag.String("listen", envOrDefault("SM_LISTEN_ADDR", ":8443"), "Address the server should listen on")
+	storePath := flag.String("store", envOrDefault("SM_STORE", "data/messages.db"), "Path to the message store file")
+	identityPath := flag.String("identity-store", envOrDefault("SM_IDENTITY_STORE", "data/identity.db"), "Path to the identity store file")
 	httpListenAddr := flag.String("http-listen", ":8080", "Address the HTTP API should listen on")
 	messageKey := flag.String("message-key", envOrDefault("SM_MESSAGE_KEY", messaging.DefaultMessageKeyBase64), "Base64-encoded AES-256 key for encrypting HTTP messages")
+	logDir := flag.String("log-dir", "data/logs", "Directory where server logs should be stored")
 	flag.Parse()
 
 	return serverConfig{
@@ -105,6 +110,7 @@ func parseConfig() serverConfig {
 		identityPath:   *identityPath,
 		httpListenAddr: *httpListenAddr,
 		messageKey:     *messageKey,
+		logDir:         *logDir,
 	}
 }
 
@@ -230,4 +236,21 @@ func startHTTPServer(listenAddr string, mux *http.ServeMux) {
 			log.Fatalf("http serve: %v", err)
 		}
 	}()
+}
+
+func setupLogging(logDir string) *os.File {
+	logFile, err := logging.Setup(logDir)
+	if err != nil {
+		log.Fatalf("init logging: %v", err)
+	}
+	return logFile
+}
+
+func closeLogFile(logFile *os.File) {
+	if logFile == nil {
+		return
+	}
+	if err := logFile.Close(); err != nil {
+		log.Printf("close log file: %v", err)
+	}
 }

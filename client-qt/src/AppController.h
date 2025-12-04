@@ -28,7 +28,7 @@ class AppController : public QObject {
     Q_PROPERTY(bool authBusy READ isAuthBusy NOTIFY authBusyChanged)
 
 public:
-    explicit AppController(QObject *parent = nullptr);
+    explicit AppController(const QString &apiBaseUrl = QString(), QObject *parent = nullptr);
 
     QVariantMap authInfo() const;
     QVariantList userList() const;

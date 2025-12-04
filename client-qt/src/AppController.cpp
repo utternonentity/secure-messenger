@@ -77,7 +77,7 @@ QString extractMessageText(const QJsonObject &obj)
 }
 }
 
-AppController::AppController(QObject *parent)
+AppController::AppController(const QString &apiBaseUrl, QObject *parent)
     : QObject(parent)
 {
     m_networkManager = new QNetworkAccessManager(this);
@@ -87,9 +87,20 @@ AppController::AppController(QObject *parent)
         fetchHistoryFromServer(m_lastServerMsgId);
     });
 
-    m_apiBaseUrl = qEnvironmentVariable("SM_HTTP_API").trimmed();
+    m_apiBaseUrl = apiBaseUrl.trimmed();
+    if (m_apiBaseUrl.isEmpty()) {
+        m_apiBaseUrl = qEnvironmentVariable("SM_HTTP_API").trimmed();
+    }
     if (m_apiBaseUrl.isEmpty()) {
         m_apiBaseUrl = QStringLiteral("http://127.0.0.1:8080");
+    } else if (!m_apiBaseUrl.contains(QStringLiteral("://"))) {
+        QUrl hostUrl(QStringLiteral("http://%1").arg(m_apiBaseUrl));
+        if (hostUrl.isValid()) {
+            if (hostUrl.port() == -1) {
+                hostUrl.setPort(8080);
+            }
+            m_apiBaseUrl = hostUrl.toString(QUrl::RemoveUserInfo | QUrl::NormalizePathSegments);
+        }
     }
 
     loadCredentials();
